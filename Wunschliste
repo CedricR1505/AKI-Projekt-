@@ -1,3 +1,44 @@
 #Das wollen wir in der App haben 
 
+-Login Seite 
 
+-Navigation 
+  -Auf den ersten Blick ersichtlich, wie sich der Aktienkurs entwickelt hat. 
+  -Newsletter / Nachricht wenn Aktien auf der Watchliste fallen -Hinweise wenn Aktien einen bestimmten festgelegten Preis unter- oder überschreiten 
+  -Meine Aktien 
+    Watchliste 
+    Kontostand hinzufügen 
+    Portfolio anlegen -Aktien hinzufügen/löschen 
+    Wertentwicklung Tag/Woche/Monat/Jahr/Ges. 
+  -Aktien Analysen (Aktie angeben und es wird z.B. das KGV ausgegeben) 
+  -Ki 
+  -Aktien/Finanz News (Google RSS)
+  -Test Portfolio / Man kann alle Aktien "kaufen" und sehen wie sie sich entwickeln. Mit "Spielgeld" 
+
+
+
+
+
+
+
+
+1. Interaktives Finanz-Dashboard
+Kernidee: Eine Anwendung, die Finanzdaten von Aktien oder Kryptowährungen abruft, analysiert und visualisiert.
+Datenquelle: Kostenlose Finanz-APIs wie Alpha Vantage oder die yfinance-Bibliothek.
+
+Mögliche Umsetzungen:
+Grundversion: Eine Konsolenanwendung, die einen Ticker entgegennimmt, aktuelle Kurse und historische Daten abruft und einfache Statistiken (z.B. Höchst-/Tiefstkurs des letzten Jahres) ausgibt.
+Grafische Version: Ein Web-Dashboard (mit Flask oder Dash), das den Kursverlauf interaktiv mit Plotly darstellt.
+
+Optionale Erweiterungen & Vertiefungen:
+Technische Analyse: Berechnung und Einblendung von Indikatoren wie dem gleitenden Durchschnitt (Moving Average), RSI (Relative Strength Index) oder MACD.
+Portfolio-Funktion: Benutzer können ein virtuelles Portfolio anlegen und dessen Wertentwicklung über die Zeit verfolgen.
+KI-Anwendung (Sentiment-Analyse): Integration einer Nachrichten-API (z.B. News API). Analyse der Stimmung (positiv/negativ) von aktuellen Nachrichten zu einer Aktie und Visualisierung dieser Stimmung im Zeitverlauf neben dem Aktienkurs.
+KI-Anwendung (Prognose): Implementierung eines einfachen Zeitreihen-Prognosemodells (z.B. ARIMA oder Prophet von Facebook), um eine mögliche zukünftige Kursentwicklung zu schätzen.
+
+Hilfreiche Python-Bibliotheken:
+Datenbeschaffung: yfinance (für Yahoo! Finance), requests (für APIs wie Alpha Vantage).
+Datenverarbeitung: pandas (zur Strukturierung und Analyse von Zeitreihendaten).
+Web-UI: Flask (einfaches Web-Framework), Dash (spezialisiert auf Dashboards).
+Visualisierung: Matplotlib (Grundlagen), Plotly (interaktive Graphen).
+KI & Statistik: Scikit-learn (für einfache Prognosemodelle), statsmodels (für statistische Analysen).
