@@ -672,7 +672,7 @@ def update_portfolio(portfolio):
         empty_fig = go.Figure()
         empty_fig.add_annotation(text="Portfolio ist leer", x=0.5, y=0.5, showarrow=False, font=dict(size=16))
         empty_fig.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False))
-        return html.P("Portfolio ist leer. Nutze Buy/Sell um Aktien hinzuzufügen.", className="text-muted"), "", empty_fig, empty_fig
+        return html.P("Portfolio ist leer. Nutze Buy/Sell um Aktien hinzuzufügen.", className="text-muted"), "", empty_fig, empty_fig, empty_fig
     
     rows = []
     total_invested = 0
