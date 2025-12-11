@@ -904,15 +904,8 @@ def select_stock_for_buy(clicks, results):
 )
 def calculate_total(qty, ticker, portfolio):
 
-    # load current balance (fallbacks kept for safety)
-    try:
-        balance = load_balance()
-    except Exception:
-        try:
-            from app_dash import load_balance
-            balance = load_balance()
-        except Exception:
-            balance = 0.0
+    # load current balance
+    balance = load_balance()
 
     # If no ticker or qty, still show balance but no total
     if not ticker or not qty or not ticker.get("price"):
@@ -939,21 +932,10 @@ def confirm_buy(n, ticker, qty, portfolio):
         return portfolio or []
 
     # Safety: prevent buying more than current balance
-    try:
-        from app_dash import load_balance
-        balance = load_balance()
-    except Exception:
-        try:
-            balance = load_balance()
-        except Exception:
-            balance = None
+    balance = load_balance()
+    total_cost = int(qty) * float(ticker.get("price", 0))
 
-    try:
-        total_cost = int(qty) * float(ticker.get("price", 0))
-    except Exception:
-        total_cost = None
-
-    if balance is not None and total_cost is not None and total_cost > balance:
+    if total_cost > balance:
         # Not enough funds: do not modify portfolio
         return portfolio or []
     
