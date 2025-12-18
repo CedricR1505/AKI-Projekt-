@@ -10,13 +10,21 @@ import re
 from pathlib import Path
 from datetime import datetime
 from html import unescape
-import feedparser
 import pandas as pd
-try:
-    from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-    VADER_AVAILABLE = True
-except ImportError:
-    VADER_AVAILABLE = False
+
+# Sentiment-Analyse Modul importieren
+from sentiment_analysis import (
+    VADER_AVAILABLE,
+    analyze_sentiment,
+    analyze_correlation,
+    get_sentiment_label,
+    get_correlation_label,
+    ARIMA_AVAILABLE,
+    analyze_forecast,
+    get_forecast_label,
+    analyze_monte_carlo,
+    get_monte_carlo_label,
+)
 
 # ============== Daten-Pfade ==============
 DATA_DIR = Path(__file__).parent / "gui"
@@ -515,6 +523,7 @@ app.layout = dbc.Container([
                                     {"label": "200 News", "value": "200"},
                                     {"label": "500 News", "value": "500"},
                                     {"label": "1000 News", "value": "1000"},
+                                    {"label": "Alle", "value": "all"},
                                 ],
                                 value="100",
                                 className="mb-3"
@@ -538,16 +547,174 @@ app.layout = dbc.Container([
                     ]),
                 ], className="p-3"),
                 
-                # Prognose Sub-Tab
+                # Prognose Sub-Tab (mit ARIMA und Monte-Carlo als Unter-Tabs)
                 dbc.Tab(label="Prognose", children=[
-                    dbc.Row([
-                        dbc.Col([
-                            html.H6("🔮 Prognose"),
-                            html.P("Erhalte KI-gestützte Prognosen für Aktienkurse oder Markttrends.", className="text-muted"),
-                            dbc.Textarea(id="ai-forecast-input", placeholder="Geben Sie eine Aktie oder einen Markt für die Prognose ein...", className="mb-3"),
-                            dbc.Button("🔍 Prognostizieren", id="btn-forecast-analyze", color="success", className="mb-3"),
-                            html.Div(id="ai-forecast-output", className="mt-3"),
-                        ], width=12),
+                    dbc.Tabs([
+                        # ARIMA Sub-Sub-Tab
+                        dbc.Tab(label="📈 ARIMA", children=[
+                            dbc.Row([
+                                dbc.Col([
+                                    html.H6("🔮 ARIMA Kursprognose"),
+                                    html.P("Zeitreihen-basierte Kursprognose mit dem ARIMA-Modell. Berücksichtigt historische Trends.", className="text-muted"),
+                                ], width=12),
+                            ]),
+                            dbc.Row([
+                                dbc.Col([
+                                    dbc.InputGroup([
+                                        dbc.InputGroupText("🔍"),
+                                        dbc.Input(id="forecast-search-input", placeholder="Aktie suchen (z.B. Apple, Tesla)...", type="text", debounce=True),
+                                    ], className="mb-2"),
+                                    dbc.Select(
+                                        id="forecast-stock-dropdown",
+                                        options=[],
+                                        placeholder="Bitte zuerst eine Aktie suchen...",
+                                        className="mb-3"
+                                    ),
+                                ], width=4),
+                                dbc.Col([
+                                    html.Small("Historische Daten", className="text-muted"),
+                                    dbc.Select(
+                                        id="forecast-history-select",
+                                        options=[
+                                            {"label": "3 Monate", "value": "3mo"},
+                                            {"label": "6 Monate", "value": "6mo"},
+                                            {"label": "1 Jahr", "value": "1y"},
+                                            {"label": "2 Jahre", "value": "2y"},
+                                            {"label": "5 Jahre", "value": "5y"},
+                                        ],
+                                        value="1y",
+                                        className="mb-3"
+                                    ),
+                                ], width=2),
+                                dbc.Col([
+                                    html.Small("Prognose-Horizont", className="text-muted"),
+                                    dbc.Select(
+                                        id="forecast-days-select",
+                                        options=[
+                                            {"label": "1 Woche", "value": "7"},
+                                            {"label": "2 Wochen", "value": "14"},
+                                            {"label": "1 Monat", "value": "30"},
+                                            {"label": "2 Monate", "value": "60"},
+                                            {"label": "3 Monate", "value": "90"},
+                                            {"label": "6 Monate", "value": "180"},
+                                            {"label": "1 Jahr", "value": "365"},
+                                            {"label": "2 Jahre", "value": "730"},
+                                            {"label": "3 Jahre", "value": "1095"},
+                                            {"label": "5 Jahre", "value": "1825"},
+                                        ],
+                                        value="30",
+                                        className="mb-3"
+                                    ),
+                                ], width=2),
+                                dbc.Col([
+                                    html.Small(" ", className="d-block"),
+                                    dbc.Button("🔮 Prognose erstellen", id="btn-forecast-analyze", color="success", className="w-100"),
+                                ], width=2),
+                                dbc.Col([
+                                    dbc.Alert([
+                                        html.Strong("Hinweis: "),
+                                        "Für zuverlässige Prognosen sollte der historische Zeitraum mindestens so lang sein wie der Prognose-Horizont."
+                                    ], color="info", className="mb-0 py-2 small"),
+                                ], width=2),
+                            ]),
+                            dbc.Row([
+                                dbc.Col([
+                                    dcc.Loading(
+                                        id="forecast-loading",
+                                        type="circle",
+                                        children=[
+                                            html.Div(id="ai-forecast-output", className="mt-3"),
+                                        ]
+                                    ),
+                                ], width=12),
+                            ]),
+                        ], className="p-3"),
+                        
+                        # Monte-Carlo Sub-Sub-Tab
+                        dbc.Tab(label="🎲 Monte-Carlo", children=[
+                            dbc.Row([
+                                dbc.Col([
+                                    html.H6("🎲 Monte-Carlo Simulation"),
+                                    html.P("Stochastische Kursprognose basierend auf Geometric Brownian Motion mit tausenden Simulationspfaden.", className="text-muted"),
+                                ], width=12),
+                            ]),
+                            dbc.Row([
+                                dbc.Col([
+                                    dbc.InputGroup([
+                                        dbc.InputGroupText("🔍"),
+                                        dbc.Input(id="mc-search-input", placeholder="Aktie suchen (z.B. Apple, Tesla)...", type="text", debounce=True),
+                                    ], className="mb-2"),
+                                    dbc.Select(
+                                        id="mc-stock-dropdown",
+                                        options=[],
+                                        placeholder="Bitte zuerst eine Aktie suchen...",
+                                        className="mb-3"
+                                    ),
+                                ], width=3),
+                                dbc.Col([
+                                    html.Small("Historische Daten", className="text-muted"),
+                                    dbc.Select(
+                                        id="mc-history-select",
+                                        options=[
+                                            {"label": "3 Monate", "value": "3mo"},
+                                            {"label": "6 Monate", "value": "6mo"},
+                                            {"label": "1 Jahr", "value": "1y"},
+                                            {"label": "2 Jahre", "value": "2y"},
+                                            {"label": "5 Jahre", "value": "5y"},
+                                        ],
+                                        value="1y",
+                                        className="mb-3"
+                                    ),
+                                ], width=2),
+                                dbc.Col([
+                                    html.Small("Prognose-Horizont", className="text-muted"),
+                                    dbc.Select(
+                                        id="mc-days-select",
+                                        options=[
+                                            {"label": "1 Woche", "value": "7"},
+                                            {"label": "2 Wochen", "value": "14"},
+                                            {"label": "1 Monat", "value": "30"},
+                                            {"label": "3 Monate", "value": "90"},
+                                            {"label": "6 Monate", "value": "180"},
+                                            {"label": "1 Jahr", "value": "365"},
+                                            {"label": "2 Jahre", "value": "730"},
+                                            {"label": "5 Jahre", "value": "1825"},
+                                        ],
+                                        value="30",
+                                        className="mb-3"
+                                    ),
+                                ], width=2),
+                                dbc.Col([
+                                    html.Small("Simulationen", className="text-muted"),
+                                    dbc.Select(
+                                        id="mc-simulations-select",
+                                        options=[
+                                            {"label": "500", "value": "500"},
+                                            {"label": "1.000", "value": "1000"},
+                                            {"label": "5.000", "value": "5000"},
+                                            {"label": "10.000", "value": "10000"},
+                                        ],
+                                        value="1000",
+                                        className="mb-3"
+                                    ),
+                                ], width=2),
+                                dbc.Col([
+                                    html.Small(" ", className="d-block"),
+                                    dbc.Button("🎲 Simulation starten", id="btn-mc-analyze", color="warning", className="w-100"),
+                                ], width=2),
+                            ]),
+                            dbc.Row([
+                                dbc.Col([
+                                    dcc.Loading(
+                                        id="mc-loading",
+                                        type="circle",
+                                        children=[
+                                            html.Div(id="mc-output", className="mt-3"),
+                                        ]
+                                    ),
+                                ], width=12),
+                            ]),
+                        ], className="p-3"),
                     ]),
                 ], className="p-3"),
                 
@@ -585,6 +752,21 @@ app.layout = dbc.Container([
                                     {"label": "5 Jahre", "value": "5y"},
                                 ],
                                 value="3mo",
+                                className="mb-3"
+                            ),
+                        ], width=2),
+                        dbc.Col([
+                            html.Small("News-Anzahl", className="text-muted"),
+                            dbc.Select(
+                                id="corr-news-count",
+                                options=[
+                                    {"label": "100 News", "value": "100"},
+                                    {"label": "200 News", "value": "200"},
+                                    {"label": "500 News", "value": "500"},
+                                    {"label": "1000 News", "value": "1000"},
+                                    {"label": "Alle", "value": "all"},
+                                ],
+                                value="500",
                                 className="mb-3"
                             ),
                         ], width=2),
@@ -1359,275 +1541,104 @@ def sentiment_search_stocks(search_query):
     State("sentiment-news-count", "value"),
     prevent_initial_call=True
 )
-def sentiment_analyze(n_clicks, symbol, period, news_count):
+def sentiment_analyze_callback(n_clicks, symbol, period, news_count):
     if not symbol:
         return dbc.Alert("Bitte wählen Sie eine Aktie aus der Dropdown-Liste aus.", color="warning")
-    
-    symbol = symbol.strip().upper()
-    news_limit = int(news_count) if news_count else 30
     
     if not VADER_AVAILABLE:
         return dbc.Alert("Die vaderSentiment-Bibliothek ist nicht installiert. Bitte installieren Sie sie mit: pip install vaderSentiment", color="danger")
     
-    try:
-        # Zeitraum in Tage für News-Filter
-        period_days = {
-            "1d": 1, "5d": 7, "1mo": 30, "3mo": 90, "6mo": 180, "1y": 365, "5y": 1825
-        }
-        days_back = period_days.get(period, 30)
-        cutoff_date = (pd.Timestamp.now() - pd.Timedelta(days=days_back)).date()
-        
-        # 1. RSS-Feeds abrufen (erweiterte Quellen für mehr historische Daten)
-        rss_feeds = [
-            f"https://news.google.com/rss/search?q={symbol}+stock&hl=en&gl=US&ceid=US:en",
-            f"https://news.google.com/rss/search?q={symbol}+Aktie&hl=de&gl=DE&ceid=DE:de",
-            f"https://news.google.com/rss/search?q={symbol}+shares&hl=en&gl=US&ceid=US:en",
-            f"https://news.google.com/rss/search?q={symbol}+investor&hl=en&gl=US&ceid=US:en",
-            f"https://news.google.com/rss/search?q={symbol}+earnings&hl=en&gl=US&ceid=US:en",
-            f"https://news.google.com/rss/search?q={symbol}+quarterly+report&hl=en&gl=US&ceid=US:en",
-            f"https://news.google.com/rss/search?q={symbol}+market&hl=en&gl=US&ceid=US:en",
-            f"https://news.google.com/rss/search?q={symbol}+CEO&hl=en&gl=US&ceid=US:en",
-            "https://www.wallstreet-online.de/rss/nachrichten-aktien-indizes.xml",
-            "https://www.ft.com/rss/home/international",
-            "https://feeds.bloomberg.com/markets/news.rss",
-        ]
-        
-        analyzer = SentimentIntensityAnalyzer()
-        news_data = []
-        news_items = []
-        sources_found = []
-        seen_titles = set()  # Duplikate vermeiden
-        
-        for feed_url in rss_feeds:
-            try:
-                feed = feedparser.parse(feed_url)
-                if feed.entries:
-                    # Quelle identifizieren
-                    if "google.com" in feed_url:
-                        source_name = "Google News"
-                    elif "wallstreet-online" in feed_url:
-                        source_name = "Wallstreet Online"
-                    elif "ft.com" in feed_url:
-                        source_name = "Financial Times"
-                    elif "bloomberg" in feed_url:
-                        source_name = "Bloomberg"
-                    else:
-                        source_name = "Unbekannt"
-                    
-                    entries_count = 0
-                    for entry in feed.entries:
-                        # Bei allgemeinen Feeds: nur relevante News (mit Symbol im Titel)
-                        title = entry.get("title", "")
-                        
-                        # Duplikate überspringen
-                        title_hash = title.lower().strip()[:50]
-                        if title_hash in seen_titles:
-                            continue
-                        seen_titles.add(title_hash)
-                        
-                        if "wallstreet-online" in feed_url or "ft.com" in feed_url or "bloomberg" in feed_url:
-                            # Prüfe ob Symbol oder Firmenname im Titel
-                            if symbol.lower() not in title.lower():
-                                continue
-                        
-                        try:
-                            # Publikationsdatum parsen und filtern
-                            pub_date = entry.get("published") or entry.get("pubDate") or entry.get("updated")
-                            if pub_date:
-                                date = pd.to_datetime(pub_date)
-                                # Nur News im gewählten Zeitraum
-                                if date.date() < cutoff_date:
-                                    continue
-                            else:
-                                date = pd.Timestamp.now()
-                            
-                            text = title
-                            score = analyzer.polarity_scores(text)["compound"]
-                            news_data.append({"date": date.date(), "score": score, "title": text, "source": source_name})
-                            news_items.append({"title": text, "score": score, "date": date.strftime("%d.%m.%Y"), "source": source_name})
-                            entries_count += 1
-                            
-                            if len(news_data) >= news_limit:
-                                break
-                        except:
-                            continue
-                    
-                    if entries_count > 0:
-                        sources_found.append(f"{source_name} ({entries_count})")
-            except:
-                continue
-            
-            if len(news_data) >= news_limit:
-                break
-        
-        if not news_data:
-            return dbc.Alert(f"Keine News für '{symbol}' in den RSS-Feeds gefunden.", color="warning")
-        
-        # 2. DataFrame erstellen und pro Tag mitteln
-        news_df = pd.DataFrame(news_data)
-        sentiment_daily = news_df.groupby("date")["score"].mean()
-        
-        # 3. Kursdaten abrufen
-        stock = yf.Ticker(symbol)
-        hist = stock.history(period=period or "1mo")
-        
-        if hist.empty:
-            return dbc.Alert(f"Keine Kursdaten für '{symbol}' verfügbar.", color="danger")
-        
-        # 4. Plotly Chart erstellen (Dual-Axis)
-        fig = make_subplots(specs=[[{"secondary_y": True}]])
-        
-        # Kurslinie
-        start_price = hist["Close"].iloc[0]
-        end_price = hist["Close"].iloc[-1]
-        is_positive = end_price >= start_price
-        color_line = "#22c55e" if is_positive else "#ef4444"
-        
-        fig.add_trace(
-            go.Scatter(
-                x=hist.index,
-                y=hist["Close"],
-                mode="lines",
-                name=f"{symbol} Kurs",
-                line=dict(color=color_line, width=2),
-                hovertemplate="%{y:.2f} USD<extra></extra>"
-            ),
-            secondary_y=False
-        )
-        
-        # Sentiment Balken
-        colors_bars = ["#22c55e" if s >= 0 else "#ef4444" for s in sentiment_daily.values]
-        fig.add_trace(
-            go.Bar(
-                x=pd.to_datetime(sentiment_daily.index),
-                y=sentiment_daily.values,
-                name="Sentiment Score",
-                marker_color=colors_bars,
-                opacity=0.5,
-                hovertemplate="Sentiment: %{y:.2f}<extra></extra>"
-            ),
-            secondary_y=True
-        )
-        
-        # Layout
-        pct_change = ((end_price - start_price) / start_price) * 100
-        sign = "+" if pct_change >= 0 else ""
-        
-        fig.update_layout(
-            title=dict(
-                text=f"{symbol} Kurs vs. Nachrichten-Stimmung ({sign}{pct_change:.2f}%)",
-                font=dict(size=16)
-            ),
-            plot_bgcolor="white",
-            paper_bgcolor="white",
-            hovermode="x unified",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
-            margin=dict(l=50, r=50, t=80, b=50),
-            height=400
-        )
-        
-        fig.update_yaxes(title_text="Kurs (USD)", secondary_y=False, gridcolor="#e5e7eb")
-        fig.update_yaxes(title_text="Sentiment Score", secondary_y=True, range=[-1, 1], gridcolor="#e5e7eb")
-        fig.update_xaxes(showgrid=True, gridcolor="#e5e7eb")
-        
-        # Durchschnittlichen Sentiment berechnen
-        avg_sentiment = news_df["score"].mean()
-        sentiment_label = "positiv" if avg_sentiment > 0.05 else "negativ" if avg_sentiment < -0.05 else "neutral"
-        sentiment_color = "success" if avg_sentiment > 0.05 else "danger" if avg_sentiment < -0.05 else "secondary"
-        
-        # News-Liste erstellen (Top 5)
-        news_list = []
-        for item in sorted(news_items, key=lambda x: abs(x["score"]), reverse=True)[:5]:
-            score_badge = dbc.Badge(
-                f"{item['score']:.2f}",
-                color="success" if item["score"] > 0 else "danger" if item["score"] < 0 else "secondary",
-                className="me-2"
-            )
-            source_badge = dbc.Badge(
-                item.get("source", ""),
-                color="light",
-                text_color="dark",
-                className="me-2"
-            )
-            news_list.append(
-                html.Li([
-                    score_badge,
-                    source_badge,
-                    html.Small(f"[{item['date']}] ", className="text-muted"),
-                    item["title"]
-                ], className="mb-2", style={"fontSize": "0.9rem"})
-            )
-        
-        # Quellen-Info erstellen
-        sources_info = ", ".join(sources_found) if sources_found else "Keine Quellen"
-        
-        return html.Div([
-            dbc.Row([
-                dbc.Col([
-                    dbc.Card([
-                        dbc.CardBody([
-                            html.H5("Durchschnittlicher Sentiment", className="card-title"),
-                            html.H2(f"{avg_sentiment:.2f}", className=f"text-{sentiment_color}"),
-                            dbc.Badge(sentiment_label.upper(), color=sentiment_color, className="mt-2")
-                        ])
-                    ], className="text-center")
-                ], width=3),
-                dbc.Col([
-                    dbc.Card([
-                        dbc.CardBody([
-                            html.H5("Analysierte News", className="card-title"),
-                            html.H2(f"{len(news_items)}", className="text-primary"),
-                            html.Small("Artikel analysiert", className="text-muted")
-                        ])
-                    ], className="text-center")
-                ], width=3),
-                dbc.Col([
-                    dbc.Card([
-                        dbc.CardBody([
-                            html.H5("Kursänderung", className="card-title"),
-                            html.H2(f"{sign}{pct_change:.2f}%", className=f"text-{'success' if is_positive else 'danger'}"),
-                            html.Small(f"{start_price:.2f} → {end_price:.2f} USD", className="text-muted")
-                        ])
-                    ], className="text-center")
-                ], width=3),
-                dbc.Col([
-                    dbc.Card([
-                        dbc.CardBody([
-                            html.H5("Sentiment-Tage", className="card-title"),
-                            html.H2(f"{len(sentiment_daily)}", className="text-info"),
-                            html.Small("Tage mit News", className="text-muted")
-                        ])
-                    ], className="text-center")
-                ], width=3),
-            ], className="mb-3"),
-            dbc.Alert([
-                html.Strong("📡 Quellen: "),
-                sources_info
-            ], color="light", className="mb-3"),
-            dcc.Graph(figure=fig),
-            html.Hr(),
-            html.H6("📰 Top News nach Sentiment-Stärke:"),
-            html.Ul(news_list, style={"listStyleType": "none", "paddingLeft": "0"})
-        ])
-        
-    except Exception as e:
-        return dbc.Alert(f"Fehler bei der Analyse: {str(e)}", color="danger")
-
-# Forecast Analysis
-@callback(
-    Output("ai-forecast-output", "children"),
-    Input("btn-forecast-analyze", "n_clicks"),
-    State("ai-forecast-input", "value"),
-    prevent_initial_call=True
-)
-def forecast_analyze(n_clicks, input_text):
-    if not input_text:
-        return html.P("Bitte geben Sie eine Aktie oder einen Markt ein.", className="text-muted")
+    # News-Limit verarbeiten ("all" = sehr hohe Zahl)
+    news_limit = 100000 if news_count == "all" else int(news_count or 100)
     
-    # Dummy Forecast Response
-    response = f"🔮 Prognose für: '{input_text}'\n\nBasierend auf historischen Daten und aktuellen Trends wird eine moderate Steigerung in den nächsten Wochen erwartet. Risiken bestehen durch Marktvolatilität."
+    # Analyse durchführen über das ausgelagerte Modul
+    result = analyze_sentiment(symbol, period, news_limit)
     
-    return dbc.Alert(response, color="warning")
+    if "error" in result:
+        return dbc.Alert(result["error"], color="danger")
+    
+    # Ergebnisse extrahieren
+    stats = result["stats"]
+    news_items = result["news_items"]
+    sources_found = result["sources_found"]
+    fig = result["figure"]
+    
+    sentiment_label, sentiment_color = get_sentiment_label(stats["avg_sentiment"])
+    sign = "+" if stats["pct_change"] >= 0 else ""
+    
+    # News-Liste erstellen (Top 5)
+    news_list = []
+    for item in sorted(news_items, key=lambda x: abs(x["score"]), reverse=True)[:5]:
+        score_badge = dbc.Badge(
+            f"{item['score']:.2f}",
+            color="success" if item["score"] > 0 else "danger" if item["score"] < 0 else "secondary",
+            className="me-2"
+        )
+        source_badge = dbc.Badge(
+            item.get("source", ""),
+            color="light",
+            text_color="dark",
+            className="me-2"
+        )
+        news_list.append(
+            html.Li([
+                score_badge,
+                source_badge,
+                html.Small(f"[{item['date']}] ", className="text-muted"),
+                item["title"]
+            ], className="mb-2", style={"fontSize": "0.9rem"})
+        )
+    
+    sources_info = ", ".join(sources_found) if sources_found else "Keine Quellen"
+    
+    return html.Div([
+        dbc.Row([
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardBody([
+                        html.H5("Durchschnittlicher Sentiment", className="card-title"),
+                        html.H2(f"{stats['avg_sentiment']:.2f}", className=f"text-{sentiment_color}"),
+                        dbc.Badge(sentiment_label.upper(), color=sentiment_color, className="mt-2")
+                    ])
+                ], className="text-center")
+            ], width=3),
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardBody([
+                        html.H5("Analysierte News", className="card-title"),
+                        html.H2(f"{stats['news_count']}", className="text-primary"),
+                        html.Small("Artikel analysiert", className="text-muted")
+                    ])
+                ], className="text-center")
+            ], width=3),
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardBody([
+                        html.H5("Kursänderung", className="card-title"),
+                        html.H2(f"{sign}{stats['pct_change']:.2f}%", className=f"text-{'success' if stats['is_positive'] else 'danger'}"),
+                        html.Small(f"{stats['start_price']:.2f} → {stats['end_price']:.2f} USD", className="text-muted")
+                    ])
+                ], className="text-center")
+            ], width=3),
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardBody([
+                        html.H5("Sentiment-Tage", className="card-title"),
+                        html.H2(f"{stats['sentiment_days']}", className="text-info"),
+                        html.Small("Tage mit News", className="text-muted")
+                    ])
+                ], className="text-center")
+            ], width=3),
+        ], className="mb-3"),
+        dbc.Alert([
+            html.Strong("📡 Quellen: "),
+            sources_info
+        ], color="light", className="mb-3"),
+        dcc.Graph(figure=fig),
+        html.Hr(),
+        html.H6("📰 Top News nach Sentiment-Stärke:"),
+        html.Ul(news_list, style={"listStyleType": "none", "paddingLeft": "0"})
+    ])
 
 # Correlation Stock Search
 @callback(
@@ -1659,229 +1670,391 @@ def corr_search_stocks(search_query):
     Input("btn-corr-analyze", "n_clicks"),
     State("corr-stock-dropdown", "value"),
     State("corr-period-select", "value"),
+    State("corr-news-count", "value"),
     prevent_initial_call=True
 )
-def correlation_analyze(n_clicks, symbol, period):
+def correlation_analyze_callback(n_clicks, symbol, period, news_count):
     if not symbol:
         return dbc.Alert("Bitte wählen Sie eine Aktie aus der Dropdown-Liste aus.", color="warning")
-    
-    symbol = symbol.strip().upper()
     
     if not VADER_AVAILABLE:
         return dbc.Alert("Die vaderSentiment-Bibliothek ist nicht installiert.", color="danger")
     
+    # News-Limit verarbeiten
+    news_limit = 100000 if news_count == "all" else int(news_count or 500)
+    
+    # Analyse durchführen über das ausgelagerte Modul
+    result = analyze_correlation(symbol, period, news_limit)
+    
+    if "error" in result:
+        return dbc.Alert(result["error"], color="warning")
+    
+    # Ergebnisse extrahieren
+    stats = result["stats"]
+    correlation = result["correlation"]
+    fig = result["figure"]
+    
+    corr_label, corr_color = get_correlation_label(correlation)
+    
+    return html.Div([
+        dbc.Row([
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardBody([
+                        html.H5("Korrelationskoeffizient", className="card-title"),
+                        html.H2(f"{correlation:.3f}", className=f"text-{corr_color}"),
+                        dbc.Badge(corr_label, color=corr_color, className="mt-2")
+                    ])
+                ], className="text-center")
+            ], width=3),
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardBody([
+                        html.H5("News analysiert", className="card-title"),
+                        html.H2(f"{stats['news_count']}", className="text-primary"),
+                        html.Small(f"über {stats['days_back']} Tage", className="text-muted")
+                    ])
+                ], className="text-center")
+            ], width=3),
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardBody([
+                        html.H5("Kursänderung", className="card-title"),
+                        html.H2(f"{'+' if stats['pct_change'] >= 0 else ''}{stats['pct_change']:.2f}%", className=f"text-{'success' if stats['is_positive'] else 'danger'}"),
+                        html.Small(f"{stats['start_price']:.2f} → {stats['end_price']:.2f}", className="text-muted")
+                    ])
+                ], className="text-center")
+            ], width=3),
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardBody([
+                        html.H5("Ø Sentiment", className="card-title"),
+                        html.H2(f"{stats['avg_sentiment']:.3f}", className=f"text-{'success' if stats['avg_sentiment'] > 0 else 'danger'}"),
+                        html.Small("Durchschnitt", className="text-muted")
+                    ])
+                ], className="text-center")
+            ], width=3),
+        ], className="mb-3"),
+        dbc.Alert([
+            html.Strong("📊 Interpretation: "),
+            f"Ein Korrelationskoeffizient von {correlation:.3f} bedeutet ",
+            html.Strong("starke positive Beziehung" if correlation > 0.5 else "moderate positive Beziehung" if correlation > 0.3 else "starke negative Beziehung" if correlation < -0.5 else "moderate negative Beziehung" if correlation < -0.3 else "schwache/keine lineare Beziehung"),
+            " zwischen Sentiment und Kursbewegung. ",
+            "Grüne Hintergründe = positive Stimmung, Rote = negative Stimmung."
+        ], color="info", className="mb-3"),
+        dcc.Graph(figure=fig),
+    ])
+
+
+# ============== Forecast Callbacks ==============
+# Stock search for forecast
+@callback(
+    Output("forecast-stock-dropdown", "options"),
+    Output("forecast-stock-dropdown", "value"),
+    Input("forecast-search-input", "value"),
+    prevent_initial_call=True
+)
+def forecast_search_callback(search_term):
+    if not search_term or len(search_term) < 2:
+        return [], None
+    
+    options = []
     try:
-        # Zeitraum in Tage umrechnen für News-Filter
-        period_days = {
-            "5d": 7,
-            "1mo": 30,
-            "3mo": 90,
-            "6mo": 180,
-            "1y": 365,
-            "5y": 1825
-        }
-        days_back = period_days.get(period, 90)
-        cutoff_date = (pd.Timestamp.now() - pd.Timedelta(days=days_back)).date()
+        url = f"https://query1.finance.yahoo.com/v1/finance/search?q={search_term}&quotesCount=10&newsCount=0"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        resp = requests.get(url, headers=headers, timeout=5)
+        data = resp.json()
         
-        # RSS-Feeds mit erweiterten historischen Suchoptionen
-        rss_feeds = [
-            f"https://news.google.com/rss/search?q={symbol}+stock&hl=en&gl=US&ceid=US:en",
-            f"https://news.google.com/rss/search?q={symbol}+Aktie&hl=de&gl=DE&ceid=DE:de",
-            f"https://news.google.com/rss/search?q={symbol}+shares&hl=en&gl=US&ceid=US:en",
-            f"https://news.google.com/rss/search?q={symbol}+investor&hl=en&gl=US&ceid=US:en",
-            f"https://news.google.com/rss/search?q={symbol}+earnings&hl=en&gl=US&ceid=US:en",
-            f"https://news.google.com/rss/search?q={symbol}+quarterly&hl=en&gl=US&ceid=US:en",
-        ]
+        for quote in data.get("quotes", []):
+            symbol = quote.get("symbol", "")
+            name = quote.get("shortname", "") or quote.get("longname", "")
+            qtype = quote.get("quoteType", "")
+            
+            if qtype in ["EQUITY", "ETF"] and symbol:
+                label = f"{symbol} - {name}" if name else symbol
+                options.append({"label": label, "value": symbol})
+    except:
+        pass
+    
+    default_value = options[0]["value"] if options else None
+    return options, default_value
+
+
+# Forecast Analysis
+@callback(
+    Output("ai-forecast-output", "children"),
+    Input("btn-forecast-analyze", "n_clicks"),
+    State("forecast-stock-dropdown", "value"),
+    State("forecast-history-select", "value"),
+    State("forecast-days-select", "value"),
+    prevent_initial_call=True
+)
+def forecast_analyze_callback(n_clicks, symbol, history_period, forecast_days):
+    if not symbol:
+        return dbc.Alert("Bitte wählen Sie eine Aktie aus der Dropdown-Liste aus.", color="warning")
+    
+    if not ARIMA_AVAILABLE:
+        return dbc.Alert("Die statsmodels-Bibliothek ist nicht installiert. Bitte installieren Sie sie mit: pip install statsmodels", color="danger")
+    
+    forecast_days_int = int(forecast_days) if forecast_days else 30
+    
+    # Analyse durchführen
+    result = analyze_forecast(symbol, history_period, forecast_days_int)
+    
+    if "error" in result:
+        return dbc.Alert(result["error"], color="danger")
+    
+    # Ergebnisse extrahieren
+    stats = result["stats"]
+    fig = result["figure"]
+    
+    forecast_label, forecast_color = get_forecast_label(stats["forecast_change"])
+    
+    return html.Div([
+        dbc.Row([
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardBody([
+                        html.H5("Aktueller Kurs", className="card-title"),
+                        html.H2(f"${stats['current_price']:.2f}", className="text-primary"),
+                        html.Small("Letzter Schlusskurs", className="text-muted")
+                    ])
+                ], className="text-center")
+            ], width=3),
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardBody([
+                        html.H5(f"Prognose ({stats['forecast_days']} Tage)", className="card-title"),
+                        html.H2(f"${stats['forecast_price']:.2f}", className=f"text-{forecast_color}"),
+                        dbc.Badge(forecast_label, color=forecast_color, className="mt-1")
+                    ])
+                ], className="text-center")
+            ], width=3),
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardBody([
+                        html.H5("Erwartete Änderung", className="card-title"),
+                        html.H2(f"{'+' if stats['forecast_change'] >= 0 else ''}{stats['forecast_change']:.2f}%", className=f"text-{forecast_color}"),
+                        html.Small(f"{stats['current_price']:.2f} → {stats['forecast_price']:.2f}", className="text-muted")
+                    ])
+                ], className="text-center")
+            ], width=3),
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardBody([
+                        html.H5("95% Konfidenz", className="card-title"),
+                        html.H6(f"${stats['ci_lower']:.2f} - ${stats['ci_upper']:.2f}", className="text-info"),
+                        html.Small(f"ARIMA{stats['arima_order']}", className="text-muted")
+                    ])
+                ], className="text-center")
+            ], width=3),
+        ], className="mb-3"),
+        dbc.Alert([
+            html.Strong("⚠️ Hinweis: "),
+            "Diese Prognose basiert auf einem statistischen ARIMA-Modell und dient nur zu Informationszwecken. ",
+            "Aktienkurse werden von vielen Faktoren beeinflusst, die das Modell nicht berücksichtigt. ",
+            html.Strong("Keine Anlageberatung!")
+        ], color="warning", className="mb-3"),
+        dcc.Graph(figure=fig),
+        dbc.Row([
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardBody([
+                        html.H6("📊 Modell-Details", className="card-title"),
+                        html.P([
+                            html.Strong("ARIMA-Parameter: "), f"{stats['arima_order']}", html.Br(),
+                            html.Strong("AIC-Score: "), f"{stats['aic']:.2f}", html.Br(),
+                            html.Strong("Trainingsdaten: "), f"{stats['history_days']} Tage", html.Br(),
+                            html.Strong("Prognose-Horizont: "), f"{stats['forecast_days']} Tage", html.Br(),
+                            html.Strong("Hist. jährl. Rendite: "), f"{stats.get('annual_drift', 0):.1f}%", html.Br(),
+                            html.Strong("Hist. jährl. Volatilität: "), f"{stats.get('annual_volatility', 0):.1f}%"
+                        ], className="mb-0 small")
+                    ])
+                ])
+            ], width=12),
+        ]),
+    ])
+
+
+# ============== Monte-Carlo Callbacks ==============
+# Stock search for Monte-Carlo
+@callback(
+    Output("mc-stock-dropdown", "options"),
+    Output("mc-stock-dropdown", "value"),
+    Input("mc-search-input", "value"),
+    prevent_initial_call=True
+)
+def mc_search_callback(search_term):
+    if not search_term or len(search_term) < 2:
+        return [], None
+    
+    options = []
+    try:
+        url = f"https://query1.finance.yahoo.com/v1/finance/search?q={search_term}&quotesCount=10&newsCount=0"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        resp = requests.get(url, headers=headers, timeout=5)
+        data = resp.json()
         
-        analyzer = SentimentIntensityAnalyzer()
-        news_data = []
-        
-        for feed_url in rss_feeds:
-            try:
-                feed = feedparser.parse(feed_url)
-                for entry in feed.entries:
-                    try:
-                        pub_date = entry.get("published") or entry.get("pubDate") or entry.get("updated")
-                        if pub_date:
-                            date = pd.to_datetime(pub_date)
-                            if date.date() < cutoff_date:
-                                continue
-                        else:
-                            continue
-                        
-                        title = entry.get("title", "")
-                        score = analyzer.polarity_scores(title)["compound"]
-                        news_data.append({"date": date.date(), "score": score})
-                    except:
-                        continue
-            except:
-                continue
-        
-        if len(news_data) < 5:
-            return dbc.Alert(f"Zu wenige News für '{symbol}' gefunden ({len(news_data)} Artikel). Versuchen Sie einen kürzeren Zeitraum.", color="warning")
-        
-        # DataFrame und täglicher Durchschnitt
-        news_df = pd.DataFrame(news_data)
-        sentiment_daily = news_df.groupby("date")["score"].mean().reset_index()
-        sentiment_daily.columns = ["date", "sentiment"]
-        sentiment_daily["date"] = pd.to_datetime(sentiment_daily["date"])
-        
-        # Kursdaten abrufen
-        stock = yf.Ticker(symbol)
-        hist = stock.history(period=period or "3mo")
-        
-        if hist.empty:
-            return dbc.Alert(f"Keine Kursdaten für '{symbol}' verfügbar.", color="danger")
-        
-        # Kursdaten vorbereiten
-        price_df = hist[["Close"]].reset_index()
-        price_df.columns = ["date", "price"]
-        price_df["date"] = pd.to_datetime(price_df["date"]).dt.tz_localize(None)
-        
-        # Merge: Sentiment mit Kursdaten
-        merged_df = pd.merge(price_df, sentiment_daily, on="date", how="left")
-        merged_df["sentiment"] = merged_df["sentiment"].interpolate(method="linear").fillna(0)
-        
-        # Korrelation berechnen
-        correlation = merged_df["price"].corr(merged_df["sentiment"])
-        
-        # Normalisierte Werte für bessere Visualisierung
-        merged_df["price_norm"] = (merged_df["price"] - merged_df["price"].min()) / (merged_df["price"].max() - merged_df["price"].min())
-        merged_df["sentiment_norm"] = (merged_df["sentiment"] - merged_df["sentiment"].min()) / (merged_df["sentiment"].max() - merged_df["sentiment"].min() + 0.001)
-        
-        # Rolling Average für Sentiment (7 Tage)
-        merged_df["sentiment_ma"] = merged_df["sentiment"].rolling(window=7, min_periods=1).mean()
-        
-        # Plotly Chart erstellen
-        fig = make_subplots(
-            rows=2, cols=1,
-            row_heights=[0.7, 0.3],
-            shared_xaxes=True,
-            vertical_spacing=0.05,
-            subplot_titles=(f"{symbol} Kurs mit Sentiment-Overlay", "Sentiment-Score (7-Tage Durchschnitt)")
-        )
-        
-        # Kurs-Linie
-        start_price = merged_df["price"].iloc[0]
-        end_price = merged_df["price"].iloc[-1]
-        is_positive = end_price >= start_price
-        color_price = "#22c55e" if is_positive else "#ef4444"
-        
-        fig.add_trace(
-            go.Scatter(
-                x=merged_df["date"],
-                y=merged_df["price"],
-                mode="lines",
-                name="Kurs",
-                line=dict(color=color_price, width=2),
-                hovertemplate="%{y:.2f} USD<extra>Kurs</extra>"
-            ),
-            row=1, col=1
-        )
-        
-        # Sentiment-Punkte auf Kurschart (farbcodiert)
-        sentiment_colors = ["#22c55e" if s > 0.05 else "#ef4444" if s < -0.05 else "#6b7280" for s in merged_df["sentiment"]]
-        
-        # Sentiment als Hintergrund-Färbung
-        for i in range(len(merged_df) - 1):
-            sentiment_val = merged_df["sentiment"].iloc[i]
-            if abs(sentiment_val) > 0.1:
-                fill_color = "rgba(34, 197, 94, 0.15)" if sentiment_val > 0 else "rgba(239, 68, 68, 0.15)"
-                fig.add_vrect(
-                    x0=merged_df["date"].iloc[i],
-                    x1=merged_df["date"].iloc[i+1],
-                    fillcolor=fill_color,
-                    layer="below",
-                    line_width=0,
-                    row=1, col=1
-                )
-        
-        # Sentiment-Chart unten
-        colors_bars = ["#22c55e" if s > 0 else "#ef4444" for s in merged_df["sentiment_ma"]]
-        fig.add_trace(
-            go.Bar(
-                x=merged_df["date"],
-                y=merged_df["sentiment_ma"],
-                name="Sentiment (MA7)",
-                marker_color=colors_bars,
-                opacity=0.7,
-                hovertemplate="Sentiment: %{y:.3f}<extra></extra>"
-            ),
-            row=2, col=1
-        )
-        
-        # Nulllinie im Sentiment-Chart
-        fig.add_hline(y=0, line_dash="dash", line_color="gray", row=2, col=1)
-        
-        # Layout
-        pct_change = ((end_price - start_price) / start_price) * 100
-        corr_color = "success" if correlation > 0.3 else "danger" if correlation < -0.3 else "secondary"
-        corr_label = "Stark positiv" if correlation > 0.5 else "Positiv" if correlation > 0.3 else "Stark negativ" if correlation < -0.5 else "Negativ" if correlation < -0.3 else "Schwach/Neutral"
-        
-        fig.update_layout(
-            height=600,
-            plot_bgcolor="white",
-            paper_bgcolor="white",
-            hovermode="x unified",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
-            margin=dict(l=50, r=50, t=80, b=50),
-        )
-        
-        fig.update_yaxes(title_text="Kurs (USD)", gridcolor="#e5e7eb", row=1, col=1)
-        fig.update_yaxes(title_text="Sentiment", gridcolor="#e5e7eb", row=2, col=1)
-        fig.update_xaxes(showgrid=True, gridcolor="#e5e7eb")
-        
-        return html.Div([
-            dbc.Row([
-                dbc.Col([
-                    dbc.Card([
-                        dbc.CardBody([
-                            html.H5("Korrelationskoeffizient", className="card-title"),
-                            html.H2(f"{correlation:.3f}", className=f"text-{corr_color}"),
-                            dbc.Badge(corr_label, color=corr_color, className="mt-2")
-                        ])
-                    ], className="text-center")
-                ], width=3),
-                dbc.Col([
-                    dbc.Card([
-                        dbc.CardBody([
-                            html.H5("News analysiert", className="card-title"),
-                            html.H2(f"{len(news_data)}", className="text-primary"),
-                            html.Small(f"über {days_back} Tage", className="text-muted")
-                        ])
-                    ], className="text-center")
-                ], width=3),
-                dbc.Col([
-                    dbc.Card([
-                        dbc.CardBody([
-                            html.H5("Kursänderung", className="card-title"),
-                            html.H2(f"{'+' if pct_change >= 0 else ''}{pct_change:.2f}%", className=f"text-{'success' if is_positive else 'danger'}"),
-                            html.Small(f"{start_price:.2f} → {end_price:.2f}", className="text-muted")
-                        ])
-                    ], className="text-center")
-                ], width=3),
-                dbc.Col([
-                    dbc.Card([
-                        dbc.CardBody([
-                            html.H5("Ø Sentiment", className="card-title"),
-                            html.H2(f"{merged_df['sentiment'].mean():.3f}", className=f"text-{'success' if merged_df['sentiment'].mean() > 0 else 'danger'}"),
-                            html.Small("Durchschnitt", className="text-muted")
-                        ])
-                    ], className="text-center")
-                ], width=3),
-            ], className="mb-3"),
-            dbc.Alert([
-                html.Strong("📊 Interpretation: "),
-                f"Ein Korrelationskoeffizient von {correlation:.3f} bedeutet ",
-                html.Strong("starke positive Beziehung" if correlation > 0.5 else "moderate positive Beziehung" if correlation > 0.3 else "starke negative Beziehung" if correlation < -0.5 else "moderate negative Beziehung" if correlation < -0.3 else "schwache/keine lineare Beziehung"),
-                " zwischen Sentiment und Kursbewegung. ",
-                "Grüne Hintergründe = positive Stimmung, Rote = negative Stimmung."
-            ], color="info", className="mb-3"),
-            dcc.Graph(figure=fig),
-        ])
-        
-    except Exception as e:
-        return dbc.Alert(f"Fehler bei der Korrelationsanalyse: {str(e)}", color="danger")
+        for quote in data.get("quotes", []):
+            symbol = quote.get("symbol", "")
+            name = quote.get("shortname", "") or quote.get("longname", "")
+            qtype = quote.get("quoteType", "")
+            
+            if qtype in ["EQUITY", "ETF"] and symbol:
+                label = f"{symbol} - {name}" if name else symbol
+                options.append({"label": label, "value": symbol})
+    except:
+        pass
+    
+    default_value = options[0]["value"] if options else None
+    return options, default_value
+
+
+# Monte-Carlo Analysis
+@callback(
+    Output("mc-output", "children"),
+    Input("btn-mc-analyze", "n_clicks"),
+    State("mc-stock-dropdown", "value"),
+    State("mc-history-select", "value"),
+    State("mc-days-select", "value"),
+    State("mc-simulations-select", "value"),
+    prevent_initial_call=True
+)
+def monte_carlo_analyze_callback(n_clicks, symbol, history_period, forecast_days, num_simulations):
+    if not symbol:
+        return dbc.Alert("Bitte wählen Sie eine Aktie aus der Dropdown-Liste aus.", color="warning")
+    
+    forecast_days_int = int(forecast_days) if forecast_days else 30
+    num_simulations_int = int(num_simulations) if num_simulations else 1000
+    
+    # Analyse durchführen
+    result = analyze_monte_carlo(symbol, history_period, forecast_days_int, num_simulations_int)
+    
+    if "error" in result:
+        return dbc.Alert(result["error"], color="danger")
+    
+    # Ergebnisse extrahieren
+    stats = result["stats"]
+    fig = result["figure"]
+    
+    mc_label, mc_color = get_monte_carlo_label(stats["prob_positive"])
+    
+    return html.Div([
+        dbc.Row([
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardBody([
+                        html.H5("Aktueller Kurs", className="card-title"),
+                        html.H2(f"${stats['current_price']:.2f}", className="text-primary"),
+                        html.Small("Letzter Schlusskurs", className="text-muted")
+                    ])
+                ], className="text-center")
+            ], width=3),
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardBody([
+                        html.H5(f"Median ({stats['forecast_days']}T)", className="card-title"),
+                        html.H2(f"${stats['median_price']:.2f}", className=f"text-{mc_color}"),
+                        dbc.Badge(mc_label, color=mc_color, className="mt-1")
+                    ])
+                ], className="text-center")
+            ], width=3),
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardBody([
+                        html.H5("Erwartete Änderung", className="card-title"),
+                        html.H2(f"{'+' if stats['forecast_change'] >= 0 else ''}{stats['forecast_change']:.2f}%", className=f"text-{mc_color}"),
+                        html.Small(f"Mittelwert: ${stats['mean_price']:.2f}", className="text-muted")
+                    ])
+                ], className="text-center")
+            ], width=3),
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardBody([
+                        html.H5("P(Gewinn)", className="card-title"),
+                        html.H2(f"{stats['prob_positive']:.1f}%", className=f"text-{'success' if stats['prob_positive'] > 50 else 'danger'}"),
+                        html.Small(f"{stats['num_simulations']:,} Simulationen", className="text-muted")
+                    ])
+                ], className="text-center")
+            ], width=3),
+        ], className="mb-3"),
+        dbc.Row([
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardBody([
+                        html.H6("📊 Wahrscheinlichkeits-Szenarien", className="card-title"),
+                        dbc.Row([
+                            dbc.Col([
+                                html.Div([
+                                    html.Strong("P(+10%):", className="text-success"),
+                                    html.Span(f" {stats['prob_up_10']:.1f}%")
+                                ]),
+                            ], width=4),
+                            dbc.Col([
+                                html.Div([
+                                    html.Strong("P(-10%):", className="text-danger"),
+                                    html.Span(f" {stats['prob_down_10']:.1f}%")
+                                ]),
+                            ], width=4),
+                            dbc.Col([
+                                html.Div([
+                                    html.Strong("Volatilität (ann.):", className="text-info"),
+                                    html.Span(f" {stats['sigma']*100:.1f}%")
+                                ]),
+                            ], width=4),
+                        ]),
+                    ])
+                ])
+            ], width=6),
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardBody([
+                        html.H6("📈 Perzentile (Endpreis)", className="card-title"),
+                        dbc.Row([
+                            dbc.Col([
+                                html.Div([
+                                    html.Small("5%: ", className="text-muted"),
+                                    html.Span(f"${stats['percentiles']['p5']:.2f}")
+                                ]),
+                                html.Div([
+                                    html.Small("25%: ", className="text-muted"),
+                                    html.Span(f"${stats['percentiles']['p25']:.2f}")
+                                ]),
+                            ], width=4),
+                            dbc.Col([
+                                html.Div([
+                                    html.Small("50%: ", className="text-muted"),
+                                    html.Strong(f"${stats['percentiles']['p50']:.2f}")
+                                ]),
+                                html.Div([
+                                    html.Small("75%: ", className="text-muted"),
+                                    html.Span(f"${stats['percentiles']['p75']:.2f}")
+                                ]),
+                            ], width=4),
+                            dbc.Col([
+                                html.Div([
+                                    html.Small("95%: ", className="text-muted"),
+                                    html.Span(f"${stats['percentiles']['p95']:.2f}")
+                                ]),
+                                html.Div([
+                                    html.Small("Drift (ann.): ", className="text-muted"),
+                                    html.Span(f"{stats['mu']*100:.1f}%")
+                                ]),
+                            ], width=4),
+                        ]),
+                    ])
+                ])
+            ], width=6),
+        ], className="mb-3"),
+        dbc.Alert([
+            html.Strong("🎲 Monte-Carlo Simulation: "),
+            f"Basierend auf {stats['num_simulations']:,} Simulationspfaden mit Geometric Brownian Motion. ",
+            f"Die historische Volatilität beträgt {stats['sigma']*100:.1f}% (annualisiert). ",
+            html.Strong("Die Simulation zeigt mögliche Kursverläufe, keine garantierten Ergebnisse!")
+        ], color="info", className="mb-3"),
+        dcc.Graph(figure=fig),
+    ])
+
 
 # ============== Server starten ==============
 if __name__ == "__main__":
