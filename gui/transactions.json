@@ -19,5 +19,12 @@
     "symbol": "MSFT",
     "qty": 6,
     "price": 478.55999755859375
+  },
+  {
+    "timestamp": "2025-12-18T19:12:11.295203",
+    "type": "buy",
+    "symbol": "BTC-USD",
+    "qty": 1,
+    "price": 86455.3046875
   }
 ]

@@ -212,92 +212,227 @@ def create_stock_chart(symbol, period="1mo", interval="1d"):
 def create_portfolio_pie_chart(portfolio):
     if not portfolio:
         fig = go.Figure()
-        fig.add_annotation(text="Portfolio ist leer", x=0.5, y=0.5, showarrow=False, font=dict(size=16))
-        fig.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False))
+        fig.add_annotation(text="Portfolio ist leer", x=0.5, y=0.5, showarrow=False, font=dict(size=16, color="white"))
+        fig.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
         return fig
     
-    labels = []
-    values = []
-    colors = []
-    
-    for item in portfolio:
-        symbol = item["symbol"]
-        qty = item["qty"]
-        current_price, _ = fetch_price(symbol)
-        if current_price:
-            value = qty * current_price
-            values.append(value)
-            labels.append(symbol)
-            # Zufällige Farben oder feste Palette
-            colors.append(f"hsl({hash(symbol) % 360}, 70%, 50%)")
-    
-    if not values:
+    try:
+        labels = []
+        values = []
+        colors = []
+        
+        for item in portfolio:
+            symbol = item["symbol"]
+            qty = item["qty"]
+            current_price, _ = fetch_price(symbol)
+            if current_price:
+                value = qty * current_price
+                values.append(value)
+                labels.append(symbol)
+                # Zufällige Farben oder feste Palette
+                colors.append(f"hsl({hash(symbol) % 360}, 70%, 50%)")
+        
+        if not values:
+            fig = go.Figure()
+            fig.add_annotation(text="Keine aktuellen Preise verfügbar", x=0.5, y=0.5, showarrow=False, font=dict(size=16, color="white"))
+            fig.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+            return fig
+        
+        fig = go.Figure(data=[go.Pie(
+            labels=labels,
+            values=values,
+            marker_colors=colors,
+            textinfo='label+percent',
+            insidetextorientation='radial',
+            textfont=dict(color="white")
+        )])
+        
+        fig.update_layout(
+            title=dict(text="Portfolio-Zusammensetzung", font=dict(color="white")),
+            showlegend=False,
+            margin=dict(l=20, r=20, t=50, b=20),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)"
+        )
+        
+        return fig
+    except Exception:
         fig = go.Figure()
-        fig.add_annotation(text="Keine aktuellen Preise verfügbar", x=0.5, y=0.5, showarrow=False, font=dict(size=16))
-        fig.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False))
+        fig.add_annotation(text="Fehler beim Laden", x=0.5, y=0.5, showarrow=False, font=dict(size=16, color="white"))
+        fig.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
         return fig
-    
-    fig = go.Figure(data=[go.Pie(
-        labels=labels,
-        values=values,
-        marker_colors=colors,
-        textinfo='label+percent',
-        insidetextorientation='radial'
-    )])
-    
-    fig.update_layout(
-        title="Portfolio-Zusammensetzung",
-        showlegend=False,
-        margin=dict(l=20, r=20, t=50, b=20)
-    )
-    
-    return fig
 
 def create_portfolio_value_chart(portfolio):
-    if not portfolio:
+    """Erstellt ein Liniendiagramm mit Kauflinie, grün/rot Bereichen und Gewinn/Verlust-Anzeige."""
+    
+    def empty_fig(text):
         fig = go.Figure()
-        fig.add_annotation(text="Portfolio ist leer", x=0.5, y=0.5, showarrow=False, font=dict(size=16))
-        fig.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False))
+        fig.add_annotation(text=text, x=0.5, y=0.5, showarrow=False, font=dict(size=16, color="white"))
+        fig.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
         return fig
     
-    symbols = []
-    values = []
-    invested = []
-    pnl = []
+    if not portfolio:
+        return empty_fig("Portfolio ist leer")
     
-    for item in portfolio:
-        symbol = item["symbol"]
-        qty = item["qty"]
-        buy_price = item.get("buy_price") or item.get("avg_price", 0)
-        inv = qty * buy_price
-        invested.append(inv)
+    try:
+        # Daten sammeln
+        data_list = []
+        total_invested = 0
+        total_current = 0
         
-        current_price, _ = fetch_price(symbol)
-        if current_price:
-            val = qty * current_price
-            values.append(val)
-            pnl_val = val - inv
-            pnl.append(pnl_val)
-            symbols.append(fetch_name(symbol))
-        else:
-            values.append(inv)
-            pnl.append(0)
-            symbols.append(fetch_name(symbol))
-    
-    fig = go.Figure()
-    fig.add_trace(go.Bar(x=symbols, y=invested, name='Investiert', marker_color='blue'))
-    fig.add_trace(go.Bar(x=symbols, y=values, name='Aktueller Wert', marker_color='green'))
-    fig.add_trace(go.Bar(x=symbols, y=pnl, name='Gewinn/Verlust', marker_color='red' if sum(pnl) < 0 else 'green'))
-    
-    fig.update_layout(
-        title="Portfolio-Übersicht pro Position",
-        xaxis_title="Symbol",
-        yaxis_title="Wert (USD)",
-        barmode='group',
-        legend_title="Legende"
-    )
-    
-    return fig
+        for item in portfolio:
+            symbol = item.get("symbol", "")
+            qty = item.get("qty", 0)
+            buy_price = item.get("buy_price") or item.get("avg_price", 0)
+            invested = qty * buy_price
+            total_invested += invested
+            
+            try:
+                current_price, _ = fetch_price(symbol)
+            except:
+                current_price = None
+                
+            if current_price:
+                current_value = qty * current_price
+                total_current += current_value
+                pnl = current_value - invested
+                pnl_pct = (pnl / invested) * 100 if invested > 0 else 0
+                try:
+                    name = fetch_name(symbol) or symbol
+                except:
+                    name = symbol
+                data_list.append({
+                    "symbol": symbol,
+                    "name": name,
+                    "invested": invested,
+                    "current": current_value,
+                    "pnl": pnl,
+                    "pnl_pct": pnl_pct,
+                    "buy_price": buy_price,
+                    "current_price": current_price,
+                    "qty": qty
+                })
+        
+        if not data_list:
+            return empty_fig("Keine aktuellen Kursdaten verfügbar")
+        
+        # Sortieren nach Symbol
+        data_list.sort(key=lambda x: x["symbol"])
+        
+        symbols = [d["name"][:15] if d["name"] else d["symbol"] for d in data_list]
+        invested_values = [d["invested"] for d in data_list]
+        current_values = [d["current"] for d in data_list]
+        pnl_values = [d["pnl"] for d in data_list]
+        
+        fig = go.Figure()
+        
+        # Füllbereich: Grün über Kauflinie, Rot unter Kauflinie
+        for i, d in enumerate(data_list):
+            x_pos = [i - 0.3, i + 0.3, i + 0.3, i - 0.3]
+            if d["current"] >= d["invested"]:
+                # Grüner Bereich (Gewinn)
+                y_fill = [d["invested"], d["invested"], d["current"], d["current"]]
+                fig.add_trace(go.Scatter(
+                    x=x_pos, y=y_fill,
+                    fill="toself",
+                    fillcolor="rgba(34, 197, 94, 0.3)",
+                    line=dict(width=0),
+                    showlegend=False,
+                    hoverinfo="skip"
+                ))
+            else:
+                # Roter Bereich (Verlust)
+                y_fill = [d["current"], d["current"], d["invested"], d["invested"]]
+                fig.add_trace(go.Scatter(
+                    x=x_pos, y=y_fill,
+                    fill="toself",
+                    fillcolor="rgba(239, 68, 68, 0.3)",
+                    line=dict(width=0),
+                    showlegend=False,
+                    hoverinfo="skip"
+                ))
+        
+        # Kauflinie (gestrichelt)
+        fig.add_trace(go.Scatter(
+            x=list(range(len(symbols))),
+            y=invested_values,
+            mode="lines+markers",
+            name="Kaufwert",
+            line=dict(color="#fbbf24", width=3, dash="dash"),
+            marker=dict(size=10, symbol="diamond"),
+            hovertemplate="<b>Kaufwert</b><br>%{y:,.2f} USD<extra></extra>"
+        ))
+        
+        # Aktueller Wert (durchgezogen)
+        colors = ["#22c55e" if pnl >= 0 else "#ef4444" for pnl in pnl_values]
+        fig.add_trace(go.Scatter(
+            x=list(range(len(symbols))),
+            y=current_values,
+            mode="lines+markers",
+            name="Aktueller Wert",
+            line=dict(color="#3b82f6", width=3),
+            marker=dict(size=12, color=colors, line=dict(width=2, color="white")),
+            hovertemplate="<b>Aktueller Wert</b><br>%{y:,.2f} USD<extra></extra>"
+        ))
+        
+        # Gewinn/Verlust Annotationen an der Seite
+        annotations = []
+        for i, d in enumerate(data_list):
+            color = "#22c55e" if d["pnl"] >= 0 else "#ef4444"
+            sign = "+" if d["pnl"] >= 0 else ""
+            annotations.append(dict(
+                x=i,
+                y=max(d["current"], d["invested"]) * 1.08,
+                text=f"<b>{sign}{d['pnl']:.0f}$</b><br><span style='font-size:10px'>({sign}{d['pnl_pct']:.1f}%)</span>",
+                showarrow=False,
+                font=dict(color=color, size=11),
+                align="center"
+            ))
+        
+        # Gesamt P/L oben rechts
+        total_pnl = total_current - total_invested
+        total_pnl_pct = (total_pnl / total_invested) * 100 if total_invested > 0 else 0
+        total_color = "#22c55e" if total_pnl >= 0 else "#ef4444"
+        total_sign = "+" if total_pnl >= 0 else ""
+        
+        fig.update_layout(
+            title=dict(
+                text=f"Portfolio-Wertentwicklung | Gesamt: <span style='color:{total_color}'>{total_sign}{total_pnl:,.2f}$ ({total_sign}{total_pnl_pct:.1f}%)</span>",
+                font=dict(size=14, color="white")
+            ),
+            xaxis=dict(
+                tickmode="array",
+                tickvals=list(range(len(symbols))),
+                ticktext=symbols,
+                tickfont=dict(color="white"),
+                gridcolor="rgba(255,255,255,0.1)"
+            ),
+            yaxis=dict(
+                title="Wert (USD)",
+                tickformat=",.0f",
+                tickfont=dict(color="white"),
+                titlefont=dict(color="white"),
+                gridcolor="rgba(255,255,255,0.1)"
+            ),
+            annotations=annotations,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="center",
+                x=0.5,
+                font=dict(color="white")
+            ),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(30,30,30,0.5)",
+            margin=dict(l=60, r=40, t=80, b=60),
+            hovermode="x unified"
+        )
+        
+        return fig
+        
+    except Exception as e:
+        return empty_fig(f"Fehler: {str(e)[:50]}")
 
 
 def create_portfolio_total_value_chart(portfolio, days=30):
@@ -306,95 +441,251 @@ def create_portfolio_total_value_chart(portfolio, days=30):
     """
     import datetime
 
+    def empty_fig(text):
+        fig = go.Figure()
+        fig.add_annotation(text=text, x=0.5, y=0.5, showarrow=False, font=dict(size=16, color="white"))
+        fig.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+        return fig
+
     if not portfolio:
-        fig = go.Figure()
-        fig.add_annotation(text="Keine Positionen im Portfolio", x=0.5, y=0.5, showarrow=False, font=dict(size=16))
-        fig.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False))
-        return fig
+        return empty_fig("Keine Positionen im Portfolio")
 
-    totals = {}
-    end = datetime.date.today()
-    start = end - datetime.timedelta(days=days)
+    try:
+        totals = {}
+        end = datetime.date.today()
+        start = end - datetime.timedelta(days=days)
 
-    for item in portfolio:
-        symbol = item.get("symbol")
-        qty = item.get("qty", 0)
-        if not symbol or qty == 0:
-            continue
-
-        # hole historische Preise (täglicher Schlusskurs)
-        hist = fetch_stock_history(symbol, period=f"{days}d", interval="1d")
-        if hist is None or hist.empty:
-            continue
-
-        for idx, row in hist.iterrows():
-            # idx ist ein Timestamp
-            try:
-                dt = idx.date()
-            except Exception:
-                # falls idx kein DatetimeIndex-Element ist
-                dt = datetime.date.fromtimestamp(idx.timestamp())
-
-            if dt < start or dt > end:
+        for item in portfolio:
+            symbol = item.get("symbol")
+            qty = item.get("qty", 0)
+            if not symbol or qty == 0:
                 continue
 
-            close = row.get("Close") if isinstance(row, dict) or hasattr(row, "get") else row["Close"]
-            try:
-                value = float(close) * qty
-            except Exception:
+            # hole historische Preise (täglicher Schlusskurs)
+            hist = fetch_stock_history(symbol, period=f"{days}d", interval="1d")
+            if hist is None or hist.empty:
                 continue
 
-            totals.setdefault(dt, 0.0)
-            totals[dt] += value
+            for idx, row in hist.iterrows():
+                # idx ist ein Timestamp
+                try:
+                    dt = idx.date()
+                except Exception:
+                    # falls idx kein DatetimeIndex-Element ist
+                    try:
+                        dt = datetime.date.fromtimestamp(idx.timestamp())
+                    except Exception:
+                        continue
 
-    if not totals:
+                if dt < start or dt > end:
+                    continue
+
+                try:
+                    close = row.get("Close") if isinstance(row, dict) or hasattr(row, "get") else row["Close"]
+                    value = float(close) * qty
+                except Exception:
+                    continue
+
+                totals.setdefault(dt, 0.0)
+                totals[dt] += value
+
+        if not totals:
+            return empty_fig("Keine historischen Preise verfügbar")
+
+        dates = sorted(totals.keys())
+        values = [totals[d] for d in dates]
+
         fig = go.Figure()
-        fig.add_annotation(text="Keine historischen Preise verfügbar", x=0.5, y=0.5, showarrow=False, font=dict(size=16))
-        fig.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False))
+        fig.add_trace(go.Scatter(x=dates, y=values, mode="lines+markers", name="Gesamtwert", line=dict(color="#0ea5a4")))
+
+        # Gesamtinvestition als Referenz (aktueller investierter Betrag)
+        total_invested = sum((item.get("qty", 0) * (item.get("buy_price") or item.get("avg_price", 0))) for item in portfolio)
+        fig.add_trace(go.Scatter(x=dates, y=[total_invested] * len(dates), mode="lines", name="Investiert (aktuell)", line=dict(color="#2563eb", dash="dash")))
+
+        fig.update_layout(
+            title=dict(text=f"Gesamtwert des Portfolios (letzte {days} Tage)", font=dict(color="white")),
+            xaxis_title="Datum",
+            yaxis_title="Wert (USD)",
+            hovermode="x unified",
+            legend=dict(font=dict(color="white")),
+            margin=dict(l=40, r=20, t=50, b=40),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(30,30,30,0.5)",
+            xaxis=dict(tickfont=dict(color="white"), titlefont=dict(color="white"), gridcolor="rgba(255,255,255,0.1)"),
+            yaxis=dict(tickfont=dict(color="white"), titlefont=dict(color="white"), gridcolor="rgba(255,255,255,0.1)")
+        )
+
         return fig
-
-    dates = sorted(totals.keys())
-    values = [totals[d] for d in dates]
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=dates, y=values, mode="lines+markers", name="Gesamtwert", line=dict(color="#0ea5a4")))
-
-    # Gesamtinvestition als Referenz (aktueller investierter Betrag)
-    total_invested = sum((item.get("qty", 0) * (item.get("buy_price") or item.get("avg_price", 0))) for item in portfolio)
-    fig.add_trace(go.Scatter(x=dates, y=[total_invested] * len(dates), mode="lines", name="Investiert (aktuell)", line=dict(color="#2563eb", dash="dash")))
-
-    fig.update_layout(
-        title="Gesamtwert des Portfolios (letzte %s Tage)" % days,
-        xaxis_title="Datum",
-        yaxis_title="Wert (USD)",
-        hovermode="x unified",
-        legend_title="Legende",
-        margin=dict(l=40, r=20, t=50, b=40)
-    )
-
-    return fig
+    except Exception:
+        return empty_fig("Fehler beim Laden der Daten")
 
 # ============== App Initialisierung ==============
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_exceptions=True)
+app = dash.Dash(
+    __name__, 
+    external_stylesheets=[
+        dbc.themes.DARKLY,  # Dark Theme für bessere News-Darstellung
+        "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"  # FontAwesome Icons
+    ], 
+    suppress_callback_exceptions=True
+)
 app.title = "Stock Dashboard"
+
+# Custom CSS für News-Kacheln Hover-Effekte und Theme-Support
+app.index_string = '''
+<!DOCTYPE html>
+<html>
+    <head>
+        {%metas%}
+        <title>{%title%}</title>
+        {%favicon%}
+        {%css%}
+        <style>
+            /* News Card Styles */
+            .news-card:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 8px 25px rgba(0, 123, 255, 0.3) !important;
+            }
+            .news-grid-container {
+                min-height: 60vh;
+            }
+            .news-card .card-body {
+                background: linear-gradient(180deg, #2d3436 0%, #1e272e 100%);
+            }
+            .news-card img {
+                filter: brightness(0.9);
+                transition: filter 0.3s;
+            }
+            .news-card:hover img {
+                filter: brightness(1.1);
+            }
+            
+            /* Light Mode Overrides */
+            body.light-mode {
+                background-color: #f8f9fa !important;
+                color: #212529 !important;
+            }
+            body.light-mode .bg-dark {
+                background-color: #ffffff !important;
+            }
+            body.light-mode .text-white {
+                color: #212529 !important;
+            }
+            body.light-mode .card {
+                background-color: #ffffff !important;
+                border-color: #dee2e6 !important;
+            }
+            body.light-mode .news-card .card-body {
+                background: linear-gradient(180deg, #ffffff 0%, #f8f9fa 100%) !important;
+            }
+            body.light-mode .news-card .text-white {
+                color: #212529 !important;
+            }
+            body.light-mode .table {
+                color: #212529 !important;
+            }
+            body.light-mode .nav-tabs .nav-link {
+                color: #495057 !important;
+            }
+            body.light-mode .nav-tabs .nav-link.active {
+                background-color: #ffffff !important;
+                color: #212529 !important;
+            }
+            body.light-mode .container-fluid,
+            body.light-mode .container {
+                background-color: #f8f9fa !important;
+            }
+            body.light-mode .form-control,
+            body.light-mode .form-select {
+                background-color: #ffffff !important;
+                color: #212529 !important;
+                border-color: #ced4da !important;
+            }
+            body.light-mode .input-group-text {
+                background-color: #e9ecef !important;
+                color: #212529 !important;
+            }
+            body.light-mode .modal-content {
+                background-color: #ffffff !important;
+            }
+            body.light-mode .text-muted {
+                color: #6c757d !important;
+            }
+            
+            /* Portfolio Table Styles */
+            .portfolio-table th {
+                font-weight: 600;
+            }
+            .portfolio-table td {
+                vertical-align: middle;
+            }
+            
+            /* Theme Toggle Button */
+            .theme-toggle-btn {
+                transition: all 0.3s ease;
+            }
+            .theme-toggle-btn:hover {
+                transform: scale(1.1);
+            }
+        </style>
+    </head>
+    <body>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+    </body>
+</html>
+'''
 
 # ============== Layout ==============
 def create_market_ticker():
     return dbc.Row([
         dbc.Col(html.Div(id=f"ticker-{s['name']}", className="text-center p-2", 
-                         style={"cursor": "pointer", "borderRadius": "5px", "background": "#f8f9fa"}), 
+                         style={"cursor": "pointer", "borderRadius": "5px", "background": "rgba(128, 128, 128, 0.2)"}), 
                 width="auto") 
         for s in MARKET_OVERVIEW_SYMBOLS
-    ], className="g-2 p-2 bg-light mb-3", justify="center")
+    ], className="g-2 p-2 mb-3", justify="center", style={"background": "rgba(128, 128, 128, 0.1)", "borderRadius": "8px"})
 
 app.layout = dbc.Container([
     dcc.Interval(id="market-interval", interval=15000, n_intervals=0),
     dcc.Store(id="selected-ticker", data=None),
     dcc.Store(id="portfolio-store", data=load_portfolio()),
     dcc.Store(id="search-results-store", data=[]),
+    dcc.Store(id="theme-store", data="dark"),  # Theme Store
+    
+    # Header mit Theme Toggle
+    dbc.Row([
+        dbc.Col([
+            html.H4("📈 Stock Dashboard", className="mb-0"),
+        ], width=8),
+        dbc.Col([
+            dbc.ButtonGroup([
+                dbc.Button(
+                    [html.I(className="fas fa-sun me-1"), "Light"],
+                    id="btn-light-mode",
+                    color="warning",
+                    size="sm",
+                    outline=True,
+                    className="theme-toggle-btn"
+                ),
+                dbc.Button(
+                    [html.I(className="fas fa-moon me-1"), "Dark"],
+                    id="btn-dark-mode",
+                    color="secondary",
+                    size="sm",
+                    outline=True,
+                    className="theme-toggle-btn"
+                ),
+            ], className="float-end")
+        ], width=4, className="text-end"),
+    ], className="my-3 align-items-center"),
+    
+    # Dummy output für Theme-Toggle (JavaScript wird über clientside callback gesteuert)
+    html.Div(id="theme-output", style={"display": "none"}),
     
     # Market Ticker Bar
-    html.H4("📈 Stock Dashboard", className="text-center my-3"),
     create_market_ticker(),
     
     # Tabs
@@ -408,7 +699,7 @@ app.layout = dbc.Container([
                         dbc.Col([
                             dbc.ButtonGroup([
                                 dbc.Button("💰 Buy/Sell", id="btn-buy-sell", color="primary", size="sm"),
-                                dbc.Button("📋 Transactions", id="btn-transactions", color="secondary", size="sm"),
+                                dbc.Button("📋 Transactions", id="btn-transactions", color="success", size="sm"),
                                 dbc.Button("💵 Kontostand", id="btn-kontostand", color="info", size="sm"),
                             ], className="mb-3"),
                         ], width=12),
@@ -422,16 +713,21 @@ app.layout = dbc.Container([
                 
                 # Wertentwicklung Sub-Tab
                 dbc.Tab(label="Wertentwicklung", children=[
-                    dbc.Row([
-                        dbc.Col([
-                            html.H6("📈 Portfolio-Wertentwicklung"),
-                            html.P("Zeigt die Entwicklung des Portfolio-Werts über Zeit, inklusive Gewinne und Verluste.", className="text-muted"),
-                            dcc.Graph(id="portfolio-value-chart", style={"height": "360px"}),
-                            html.Hr(),
-                            html.H6("📊 Gesamtwert des Portfolios"),
-                            dcc.Graph(id="portfolio-total-value-chart", style={"height": "300px"}),
-                        ], width=12),
-                    ]),
+                    # Einzelne Aktien als Kacheln oben
+                    html.H6("📊 Einzelne Positionen", className="mb-3"),
+                    html.Div(id="portfolio-stock-cards", className="mb-4"),
+                    
+                    html.Hr(),
+                    
+                    # Gesamtportfolio unten
+                    html.H6("📈 Gesamtportfolio-Entwicklung", className="mb-3"),
+                    html.Div(id="portfolio-total-summary", className="mb-3"),
+                    dcc.Graph(id="portfolio-value-chart", style={"height": "400px"}),
+                    
+                    html.Hr(),
+                    
+                    html.H6("📉 Historischer Verlauf (30 Tage)", className="mb-3"),
+                    dcc.Graph(id="portfolio-total-value-chart", style={"height": "300px"}),
                 ], className="p-3"),
             ]),
         ], className="p-3"),
@@ -463,14 +759,49 @@ app.layout = dbc.Container([
         ], className="p-3"),
         
         # News Tab
-        dbc.Tab(label="News", children=[
-            dbc.Button("🔄 Aktualisieren", id="btn-refresh-news", color="light", size="sm", className="mb-3"),
-            dbc.Row([
-                dbc.Col([
-                    html.Div(id="market-news", style={"maxHeight": "600px", "overflowY": "auto"})
-                ], width=12),
-            ]),
-        ], className="p-3"),
+        dbc.Tab(label="📰 News", children=[
+            html.Div([
+                # Header mit Suchfeld und Aktualisieren-Button
+                dbc.Row([
+                    dbc.Col([
+                        html.H4("📰 Finanznachrichten", className="mb-0 text-white"),
+                        html.Small("Aktuelle Nachrichten aus der Finanzwelt", className="text-muted")
+                    ], width=12, lg=4),
+                    dbc.Col([
+                        dbc.InputGroup([
+                            dbc.InputGroupText("🔍"),
+                            dbc.Input(
+                                id="news-search-input",
+                                placeholder="Suche nach Aktien, Themen...",
+                                type="text",
+                                debounce=True
+                            ),
+                        ], size="sm")
+                    ], width=12, lg=5, className="mt-2 mt-lg-0"),
+                    dbc.Col([
+                        dbc.ButtonGroup([
+                            dbc.Button("🔄 Aktualisieren", id="btn-refresh-news", color="primary", size="sm"),
+                        ], className="float-end")
+                    ], width=12, lg=3, className="mt-2 mt-lg-0 text-end"),
+                ], className="mb-4 align-items-center"),
+                
+                # Kategorie-Tabs
+                dbc.Tabs([
+                    dbc.Tab(label="🌍 Alle", tab_id="news-all"),
+                    dbc.Tab(label="📈 Aktien", tab_id="news-stocks"),
+                    dbc.Tab(label="₿ Krypto", tab_id="news-crypto"),
+                    dbc.Tab(label="🏦 Wirtschaft", tab_id="news-economy"),
+                ], id="news-category-tabs", active_tab="news-all", className="mb-4"),
+                
+                # News-Kacheln Container
+                dbc.Spinner(
+                    html.Div(id="market-news", className="news-grid-container"),
+                    color="primary",
+                    type="border",
+                    size="lg"
+                ),
+            ], style={"minHeight": "80vh"})
+        ], className="p-3 bg-dark"),
         
         # AI Analysis Tab
         dbc.Tab(label="AI Analysis", children=[
@@ -799,7 +1130,7 @@ app.layout = dbc.Container([
             html.Div(id="buy-search-results", style={"maxHeight": "150px", "overflowY": "auto"}),
             html.Hr(),
             html.Div(id="buy-stock-info"),
-            dcc.Graph(id="buy-chart", style={"height": "250px"}),
+            html.Div(id="buy-chart-container"),  # Chart wird nur bei Auswahl angezeigt
             dbc.Row([
                 dbc.Col([dbc.Label("Anzahl:"), dbc.Input(id="buy-qty", type="number", value=1, min=1)], width=6),
                 dbc.Col([
@@ -968,107 +1299,442 @@ def update_stock_view(search, n1d, n1w, n1m, n3m, n1y, nmax):
     Output("portfolio-chart", "figure"),
     Output("portfolio-value-chart", "figure"),
     Output("portfolio-total-value-chart", "figure"),
+    Output("portfolio-stock-cards", "children"),
+    Output("portfolio-total-summary", "children"),
     Input("portfolio-store", "data")
 )
 def update_portfolio(portfolio):
+    # Leere Figur für Fehlerfälle
+    def empty_figure(text="Portfolio ist leer"):
+        fig = go.Figure()
+        fig.add_annotation(text=text, x=0.5, y=0.5, showarrow=False, font=dict(size=16, color="white"))
+        fig.update_layout(
+            xaxis=dict(visible=False), 
+            yaxis=dict(visible=False),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)"
+        )
+        return fig
+    
     if not portfolio:
-        empty_fig = go.Figure()
-        empty_fig.add_annotation(text="Portfolio ist leer", x=0.5, y=0.5, showarrow=False, font=dict(size=16))
-        empty_fig.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False))
-        return html.P("Portfolio ist leer. Nutze Buy/Sell um Aktien hinzuzufügen.", className="text-muted"), "", empty_fig, empty_fig, empty_fig
+        return (
+            html.P("Portfolio ist leer. Nutze Buy/Sell um Aktien hinzuzufügen.", className="text-muted"), 
+            "", 
+            empty_figure(), 
+            empty_figure(), 
+            empty_figure(),
+            html.P("Keine Positionen vorhanden", className="text-muted"),
+            ""
+        )
     
-    rows = []
-    total_invested = 0
-    total_value = 0
-    
-    for item in portfolio:
-        symbol = item["symbol"]
-        name = fetch_name(symbol)
-        qty = item["qty"]
-        buy_price = item.get("buy_price") or item.get("avg_price", 0)
-        invested = qty * buy_price
-        total_invested += invested
+    try:
+        rows = []
+        stock_cards = []
+        total_invested = 0
+        total_value = 0
         
-        current_price, _ = fetch_price(symbol)
-        if current_price:
-            value = qty * current_price
-            total_value += value
-            pnl = value - invested
-            pnl_pct = (pnl / invested) * 100 if invested else 0
+        for item in portfolio:
+            symbol = item["symbol"]
+            name = fetch_name(symbol) or symbol
+            qty = item["qty"]
+            buy_price = item.get("buy_price") or item.get("avg_price", 0)
+            invested = qty * buy_price
+            total_invested += invested
             
-            rows.append({
-                "Symbol": symbol,
-                "Name": name,
-                "Anzahl": qty,
-                "Kaufkurs": f"{buy_price:.2f}",
-                "Aktuell": f"{current_price:.2f}",
-                "Investiert": f"{invested:.2f}",
-                "Wert": f"{value:.2f}",
-                "P/L": f"{pnl:+.2f} ({pnl_pct:+.2f}%)"
-            })
-        else:
-            rows.append({
-                "Symbol": symbol,
-                "Name": name,
-                "Anzahl": qty,
-                "Kaufkurs": f"{buy_price:.2f}",
-                "Aktuell": "n/a",
-                "Investiert": f"{invested:.2f}",
-                "Wert": "n/a",
-                "P/L": "n/a"
-            })
-    
-    table = dash_table.DataTable(
-        data=rows,
-        columns=[{"name": c, "id": c} for c in ["Symbol", "Name", "Anzahl", "Kaufkurs", "Aktuell", "Investiert", "Wert", "P/L"]],
-        style_cell={"textAlign": "center", "padding": "10px"},
-        style_header={"fontWeight": "bold", "backgroundColor": "#f8f9fa"},
-        style_data_conditional=[
-            {"if": {"filter_query": "{P/L} contains '+'", "column_id": "P/L"}, "color": "#22c55e", "fontWeight": "bold"},
-            {"if": {"filter_query": "{P/L} contains '-'", "column_id": "P/L"}, "color": "#ef4444", "fontWeight": "bold"},
-        ]
-    )
-    
-    total_pnl = total_value - total_invested
-    summary = dbc.Alert([
-        html.B("Gesamt: "),
-        f"Investiert: {total_invested:,.2f} USD | Wert: {total_value:,.2f} USD | ",
-        html.Span(f"P/L: {total_pnl:+,.2f} USD", style={"color": "#22c55e" if total_pnl >= 0 else "#ef4444", "fontWeight": "bold"})
-    ], color="light")
-    
-    chart = create_portfolio_pie_chart(portfolio)
-    value_chart = create_portfolio_value_chart(portfolio)
-    total_chart = create_portfolio_total_value_chart(portfolio)
-    
-    return table, summary, chart, value_chart, total_chart
+            current_price, _ = fetch_price(symbol)
+            if current_price:
+                value = qty * current_price
+                total_value += value
+                pnl = value - invested
+                pnl_pct = (pnl / invested) * 100 if invested else 0
+                
+                rows.append({
+                    "Symbol": symbol,
+                    "Name": name,
+                    "Anzahl": qty,
+                    "Kaufkurs": f"{buy_price:.2f}",
+                    "Aktuell": f"{current_price:.2f}",
+                    "Investiert": f"{invested:.2f}",
+                    "Wert": f"{value:.2f}",
+                    "P/L": f"{pnl:+.2f} ({pnl_pct:+.2f}%)"
+                })
+                
+                # Kachel für diese Aktie erstellen
+                is_profit = pnl >= 0
+                card_color = "success" if is_profit else "danger"
+                card_bg = "linear-gradient(135deg, #1a472a 0%, #0d2818 100%)" if is_profit else "linear-gradient(135deg, #4a1a1a 0%, #2d0f0f 100%)"
+                
+                stock_cards.append(
+                    dbc.Col([
+                        dbc.Card([
+                            dbc.CardBody([
+                                dbc.Row([
+                                    dbc.Col([
+                                        html.H6(symbol, className="mb-0 text-white fw-bold"),
+                                        html.Small(name[:20] + "..." if len(name) > 20 else name, className="text-muted"),
+                                    ], width=8),
+                                    dbc.Col([
+                                        html.Span(f"{qty}x", className="badge bg-secondary")
+                                    ], width=4, className="text-end"),
+                                ], className="mb-2"),
+                                html.Hr(className="my-2", style={"borderColor": "rgba(255,255,255,0.2)"}),
+                                dbc.Row([
+                                    dbc.Col([
+                                        html.Small("Kaufkurs", className="text-muted d-block"),
+                                        html.Span(f"${buy_price:.2f}", className="text-warning"),
+                                    ], width=6),
+                                    dbc.Col([
+                                        html.Small("Aktuell", className="text-muted d-block"),
+                                        html.Span(f"${current_price:.2f}", className="text-info"),
+                                    ], width=6),
+                                ], className="mb-2"),
+                                dbc.Row([
+                                    dbc.Col([
+                                        html.Small("Investiert", className="text-muted d-block"),
+                                        html.Span(f"${invested:.2f}", className="text-white"),
+                                    ], width=6),
+                                    dbc.Col([
+                                        html.Small("Wert", className="text-muted d-block"),
+                                        html.Span(f"${value:.2f}", className="text-white"),
+                                    ], width=6),
+                                ], className="mb-2"),
+                                html.Hr(className="my-2", style={"borderColor": "rgba(255,255,255,0.2)"}),
+                                dbc.Row([
+                                    dbc.Col([
+                                        html.H5(
+                                            f"{'+'if pnl >= 0 else ''}{pnl:.2f}$",
+                                            className=f"mb-0 text-{card_color}"
+                                        ),
+                                        html.Small(
+                                            f"({'+'if pnl_pct >= 0 else ''}{pnl_pct:.1f}%)",
+                                            className=f"text-{card_color}"
+                                        ),
+                                    ], width=12, className="text-center"),
+                                ]),
+                            ], className="p-3")
+                        ], style={"background": card_bg, "border": f"1px solid {'#22c55e' if is_profit else '#ef4444'}", "borderRadius": "12px"})
+                    ], xs=12, sm=6, md=4, lg=3, className="mb-3")
+                )
+            else:
+                rows.append({
+                    "Symbol": symbol,
+                    "Name": name,
+                    "Anzahl": qty,
+                    "Kaufkurs": f"{buy_price:.2f}",
+                    "Aktuell": "n/a",
+                    "Investiert": f"{invested:.2f}",
+                    "Wert": "n/a",
+                    "P/L": "n/a"
+                })
+        
+        # Kacheln in einer Row
+        cards_row = dbc.Row(stock_cards) if stock_cards else html.P("Keine Kursdaten verfügbar", className="text-muted")
+        
+        table = dash_table.DataTable(
+            data=rows,
+            columns=[{"name": c, "id": c} for c in ["Symbol", "Name", "Anzahl", "Kaufkurs", "Aktuell", "Investiert", "Wert", "P/L"]],
+            style_cell={
+                "textAlign": "center", 
+                "padding": "12px",
+                "backgroundColor": "#303030",
+                "color": "#ffffff",
+                "border": "1px solid #444"
+            },
+            style_header={
+                "fontWeight": "bold", 
+                "backgroundColor": "#404040",
+                "color": "#ffffff",
+                "border": "1px solid #555"
+            },
+            style_table={
+                "borderRadius": "8px",
+                "overflow": "hidden"
+            },
+            style_data_conditional=[
+                {"if": {"filter_query": "{P/L} contains '+'", "column_id": "P/L"}, "color": "#22c55e", "fontWeight": "bold"},
+                {"if": {"filter_query": "{P/L} contains '-'", "column_id": "P/L"}, "color": "#ef4444", "fontWeight": "bold"},
+                {"if": {"state": "active"}, "backgroundColor": "#505050", "border": "1px solid #666"},
+                {"if": {"state": "selected"}, "backgroundColor": "#505050", "border": "1px solid #666"},
+            ],
+            style_as_list_view=False,
+            css=[{"selector": ".dash-table-tooltip", "rule": "background-color: #303030; color: white"}]
+        )
+        
+        total_pnl = total_value - total_invested
+        total_pnl_pct = (total_pnl / total_invested * 100) if total_invested > 0 else 0
+        
+        summary = dbc.Card([
+            dbc.CardBody([
+                dbc.Row([
+                    dbc.Col([
+                        html.H6("💰 Investiert", className="text-muted mb-1"),
+                        html.H4(f"${total_invested:,.2f}", className="text-info mb-0")
+                    ], width=4, className="text-center"),
+                    dbc.Col([
+                        html.H6("📊 Aktueller Wert", className="text-muted mb-1"),
+                        html.H4(f"${total_value:,.2f}", className="text-primary mb-0")
+                    ], width=4, className="text-center"),
+                    dbc.Col([
+                        html.H6("📈 Gewinn/Verlust", className="text-muted mb-1"),
+                        html.H4(
+                            f"${total_pnl:+,.2f}",
+                            className=f"text-{'success' if total_pnl >= 0 else 'danger'} mb-0"
+                        ),
+                        html.Small(
+                            f"({total_pnl_pct:+.2f}%)",
+                            className=f"text-{'success' if total_pnl >= 0 else 'danger'}"
+                        )
+                    ], width=4, className="text-center"),
+                ])
+            ])
+        ], className="mt-3 border-0", style={"background": "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)"})
+        
+        # Gesamtportfolio Summary für den Wertentwicklung Tab
+        total_summary = dbc.Card([
+            dbc.CardBody([
+                dbc.Row([
+                    dbc.Col([
+                        html.H4("💰 Investiert", className="text-muted mb-2"),
+                        html.H2(f"${total_invested:,.2f}", className="text-warning mb-0")
+                    ], width=4, className="text-center"),
+                    dbc.Col([
+                        html.H4("📊 Aktueller Wert", className="text-muted mb-2"),
+                        html.H2(f"${total_value:,.2f}", className="text-info mb-0")
+                    ], width=4, className="text-center"),
+                    dbc.Col([
+                        html.H4("📈 Gewinn/Verlust", className="text-muted mb-2"),
+                        html.H2(
+                            f"${total_pnl:+,.2f}",
+                            className=f"text-{'success' if total_pnl >= 0 else 'danger'} mb-0"
+                        ),
+                        html.H5(
+                            f"({total_pnl_pct:+.2f}%)",
+                            className=f"text-{'success' if total_pnl >= 0 else 'danger'}"
+                        )
+                    ], width=4, className="text-center"),
+                ])
+            ])
+        ], className="border-0", style={"background": "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)", "borderRadius": "12px"})
+        
+        # Charts mit Fehlerbehandlung erstellen
+        try:
+            chart = create_portfolio_pie_chart(portfolio)
+        except Exception:
+            chart = empty_figure("Fehler beim Laden des Pie-Charts")
+        
+        try:
+            value_chart = create_portfolio_value_chart(portfolio)
+        except Exception as e:
+            value_chart = empty_figure(f"Fehler: {str(e)[:40]}")
+        
+        try:
+            total_chart = create_portfolio_total_value_chart(portfolio)
+        except Exception:
+            total_chart = empty_figure("Fehler beim Laden des Total-Charts")
+        
+        return table, summary, chart, value_chart, total_chart, cards_row, total_summary
+        
+    except Exception as e:
+        # Fallback bei allgemeinem Fehler
+        error_msg = html.Div([
+            html.P(f"Fehler beim Laden des Portfolios: {str(e)}", className="text-danger"),
+            html.P("Bitte versuchen Sie es später erneut.", className="text-muted")
+        ])
+        return error_msg, "", empty_figure(), empty_figure(), empty_figure(), "", ""
 
 # Market News
 @callback(
     Output("market-news", "children"),
     Input("btn-refresh-news", "n_clicks"),
+    Input("news-category-tabs", "active_tab"),
+    Input("news-search-input", "value"),
     prevent_initial_call=False
 )
-def update_market_news(n):
+def update_market_news(n, category, search_term):
+    # Kategorien definieren
+    category_targets = {
+        "news-all": ["DAX", "Nasdaq", "S&P 500", "Bitcoin", "Gold", "Tesla", "Apple", "Microsoft"],
+        "news-stocks": ["DAX", "Nasdaq", "S&P 500", "Tesla", "Apple", "Microsoft", "Amazon", "Google"],
+        "news-crypto": ["Bitcoin", "Ethereum", "Crypto", "Binance", "Solana"],
+        "news-economy": ["Economy", "Federal Reserve", "Inflation", "Interest Rate", "GDP"],
+    }
+    
+    # Suchbegriff oder Kategorie verwenden
+    if search_term and len(search_term) >= 2:
+        targets = [search_term]
+        news_limit = 20
+    else:
+        targets = category_targets.get(category, category_targets["news-all"])
+        news_limit = 4
+    
     all_news = []
-    for target in ["DAX", "Nasdaq", "S&P 500", "Bitcoin", "Gold"]:
-        news = fetch_google_news(target, 5)
+    for target in targets:
+        news = fetch_google_news(target, news_limit)
         all_news.extend(news)
     
     if not all_news:
-        return html.P("Keine News verfügbar")
+        return html.Div([
+            html.Div([
+                html.I(className="fas fa-newspaper fa-4x text-muted mb-3"),
+                html.H5("Keine Nachrichten gefunden", className="text-muted"),
+                html.P("Versuchen Sie einen anderen Suchbegriff oder eine andere Kategorie.", className="text-muted small")
+            ], className="text-center py-5")
+        ])
     
-    return [
-        dbc.Card([
-            dbc.CardBody([
-                html.H6(html.A(n["title"], href=n["link"], target="_blank", className="text-decoration-none")),
-                html.Small([
-                    html.Span(n.get("source", ""), className="text-muted"),
-                    " | ",
-                    html.Span(n.get("symbol", ""), className="badge bg-secondary")
-                ])
-            ], className="p-2")
-        ], className="mb-2") for n in all_news
+    # Große Sammlung von Finanz-Bildern für einzigartige Vorschaubilder
+    all_finance_images = [
+        "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1518546305927-5a555bb7020d?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1622630998477-20aa696ecb05?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1639762681485-074b7f938ba0?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1617788138017-80ad40651399?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1611186871348-b1ce696e52c9?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1633419461186-7d40a38105ec?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1523474253046-8cd2748b5fd2?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1573804633927-bfcbcd909acd?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1610375461246-83df859d849d?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1541354329998-f4d9a9f9297f?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1579621970563-ebec7560ff3e?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1642790106117-e829e14a795f?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1642790551116-18e150f248e3?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1642543492481-44e81e3914a7?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1535320903710-d993d3d77d29?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1504868584819-f8e8b4b6d7e3?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1543286386-713bdd548da4?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1559526324-4b87b5e36e44?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1565514020179-026b92b2d9b3?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1444653614773-995cb1ef9efa?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1507679799987-c73779587ccf?w=400&h=200&fit=crop",
+        "https://images.unsplash.com/photo-1462206092226-f46025ffe607?w=400&h=200&fit=crop",
     ]
+    
+    # Tracking für bereits verwendete Bilder und Link-Bild-Zuordnung
+    used_images = set()
+    link_to_image = {}  # Gleiche Webpage = gleiches Bild
+    
+    def get_unique_image(news_link, index):
+        """Gibt ein einzigartiges Bild zurück, außer die Webpage wurde schon verwendet"""
+        # Basis-Domain extrahieren für Duplikat-Erkennung
+        try:
+            from urllib.parse import urlparse
+            domain = urlparse(news_link).netloc
+        except:
+            domain = news_link
+        
+        # Wenn diese Domain schon ein Bild hat, verwende dasselbe
+        if domain in link_to_image:
+            return link_to_image[domain]
+        
+        # Finde ein noch nicht verwendetes Bild
+        for img_idx, img_url in enumerate(all_finance_images):
+            if img_url not in used_images:
+                used_images.add(img_url)
+                link_to_image[domain] = img_url
+                return img_url
+        
+        # Fallback: Wenn alle Bilder verwendet wurden, nehme eines basierend auf Index
+        fallback_img = all_finance_images[index % len(all_finance_images)]
+        link_to_image[domain] = fallback_img
+        return fallback_img
+    
+    # Kategorie-Farben
+    def get_category_color(symbol):
+        symbol_lower = symbol.lower()
+        if any(x in symbol_lower for x in ["bitcoin", "ethereum", "crypto", "binance", "solana"]):
+            return "warning"  # Gold für Krypto
+        elif any(x in symbol_lower for x in ["dax", "nasdaq", "s&p"]):
+            return "primary"  # Blau für Indizes
+        elif any(x in symbol_lower for x in ["economy", "federal", "inflation", "interest", "gdp"]):
+            return "info"  # Cyan für Wirtschaft
+        elif any(x in symbol_lower for x in ["gold", "silver", "oil"]):
+            return "secondary"  # Grau für Rohstoffe
+        return "success"  # Grün für Aktien
+    
+    # Datum formatieren
+    def format_date(pub_date):
+        if not pub_date:
+            return "Gerade eben"
+        try:
+            from datetime import datetime
+            # Parse RSS date format: "Wed, 18 Dec 2024 10:30:00 GMT"
+            dt = datetime.strptime(pub_date[:25], "%a, %d %b %Y %H:%M:%S")
+            now = datetime.now()
+            diff = now - dt
+            if diff.days > 0:
+                return f"vor {diff.days} Tag{'en' if diff.days > 1 else ''}"
+            hours = diff.seconds // 3600
+            if hours > 0:
+                return f"vor {hours} Stunde{'n' if hours > 1 else ''}"
+            minutes = diff.seconds // 60
+            return f"vor {minutes} Minute{'n' if minutes != 1 else ''}"
+        except:
+            return pub_date[:16] if len(pub_date) > 16 else pub_date
+    
+    # News-Kacheln erstellen
+    news_cards = []
+    for i, news_item in enumerate(all_news[:24]):  # Max 24 News
+        symbol = news_item.get("symbol", "")
+        news_link = news_item.get("link", "")
+        card = dbc.Col([
+            dbc.Card([
+                # Vorschaubild
+                html.Div([
+                    html.Img(
+                        src=get_unique_image(news_link, i),
+                        style={
+                            "width": "100%",
+                            "height": "140px",
+                            "objectFit": "cover",
+                            "borderTopLeftRadius": "0.375rem",
+                            "borderTopRightRadius": "0.375rem"
+                        }
+                    ),
+                    # Kategorie-Badge auf dem Bild
+                    dbc.Badge(
+                        symbol,
+                        color=get_category_color(symbol),
+                        className="position-absolute",
+                        style={"top": "10px", "left": "10px", "fontSize": "0.7rem"}
+                    ),
+                ], style={"position": "relative"}),
+                
+                # Card Body
+                dbc.CardBody([
+                    html.H6(
+                        html.A(
+                            news_item["title"][:80] + ("..." if len(news_item["title"]) > 80 else ""),
+                            href=news_item["link"],
+                            target="_blank",
+                            className="text-decoration-none text-white stretched-link",
+                            style={"fontSize": "0.9rem", "lineHeight": "1.3"}
+                        ),
+                        className="card-title mb-2",
+                        style={"minHeight": "45px"}
+                    ),
+                    html.Div([
+                        html.Small([
+                            html.I(className="fas fa-newspaper me-1"),
+                            html.Span(news_item.get("source", "Unbekannt")[:20], className="text-muted"),
+                        ], className="d-block"),
+                        html.Small([
+                            html.I(className="fas fa-clock me-1"),
+                            html.Span(format_date(news_item.get("pubDate", "")), className="text-muted"),
+                        ]),
+                    ], className="mt-auto")
+                ], className="d-flex flex-column", style={"minHeight": "120px"})
+            ], className="h-100 bg-dark border-secondary news-card", style={
+                "transition": "transform 0.2s, box-shadow 0.2s",
+                "cursor": "pointer"
+            })
+        ], xs=12, sm=6, md=4, lg=3, className="mb-4")
+        news_cards.append(card)
+    
+    return dbc.Row(news_cards, className="g-3")
 
 # Buy/Sell Modal Toggle
 @callback(
@@ -1158,7 +1824,7 @@ def search_for_buy(query):
 # Select Stock for Buy
 @callback(
     Output("buy-stock-info", "children"),
-    Output("buy-chart", "figure"),
+    Output("buy-chart-container", "children"),
     Output("selected-ticker", "data"),
     Input({"type": "search-result", "index": dash.ALL}, "n_clicks"),
     State("search-results-store", "data"),
@@ -1166,11 +1832,11 @@ def search_for_buy(query):
 )
 def select_stock_for_buy(clicks, results):
     if not any(clicks) or not results:
-        return "", go.Figure(), None
+        return "", "", None
     
     idx = next((i for i, c in enumerate(clicks) if c), 0)
     if idx >= len(results):
-        return "", go.Figure(), None
+        return "", "", None
     
     stock = results[idx]
     symbol = stock["symbol"]
@@ -1193,7 +1859,8 @@ def select_stock_for_buy(clicks, results):
         price = 0
     
     fig = create_stock_chart(symbol, "1d", "5m")
-    return info, fig, {"symbol": symbol, "name": stock["name"], "price": price}
+    chart_container = dcc.Graph(figure=fig, style={"height": "250px"})
+    return info, chart_container, {"symbol": symbol, "name": stock["name"], "price": price}
 
 # Calculate Total and enforce balance
 @callback(
@@ -1399,22 +2066,59 @@ def toggle_transactions(n1, n2, year, month, tx_type, is_open):
     table = dash_table.DataTable(
         data=rows,
         columns=[{"name": c, "id": c} for c in ["Datum", "Zeit", "Typ", "Symbol", "Menge", "Kurs", "Gesamt"]],
-        style_cell={"textAlign": "center", "padding": "8px"},
-        style_header={"fontWeight": "bold", "backgroundColor": "#f8f9fa"},
+        style_cell={
+            "textAlign": "center", 
+            "padding": "10px",
+            "backgroundColor": "#303030",
+            "color": "#ffffff",
+            "border": "1px solid #444"
+        },
+        style_header={
+            "fontWeight": "bold", 
+            "backgroundColor": "#404040",
+            "color": "#ffffff",
+            "border": "1px solid #555"
+        },
+        style_table={
+            "borderRadius": "8px",
+            "overflow": "hidden",
+            "maxHeight": "400px",
+            "overflowY": "auto"
+        },
         style_data_conditional=[
-            {"if": {"filter_query": "{Typ} = 'Kauf'"}, "backgroundColor": "#dcfce7"},
-            {"if": {"filter_query": "{Typ} = 'Verkauf'"}, "backgroundColor": "#fee2e2"},
-        ]
+            {"if": {"filter_query": "{Typ} = 'Kauf'"}, "backgroundColor": "#1a472a", "color": "#22c55e"},
+            {"if": {"filter_query": "{Typ} = 'Verkauf'"}, "backgroundColor": "#4a1a1a", "color": "#ef4444"},
+        ],
+        page_size=50,  # Zeigt bis zu 50 Transaktionen
+        page_action="native",
+        sort_action="native",
+        sort_mode="single",
+        filter_action="native"
     )
     
     saldo = total_sell - total_buy
-    summary = dbc.Alert([
-        f"Transaktionen: {len(filtered)} | ",
-        html.Span(f"Käufe: {total_buy:,.2f} USD", style={"color": "#22c55e"}),
-        " | ",
-        html.Span(f"Verkäufe: {total_sell:,.2f} USD", style={"color": "#ef4444"}),
-        f" | Saldo: {saldo:+,.2f} USD"
-    ], color="light")
+    summary = dbc.Card([
+        dbc.CardBody([
+            dbc.Row([
+                dbc.Col([
+                    html.H6("📊 Transaktionen", className="text-muted mb-1"),
+                    html.H4(f"{len(filtered)}", className="text-info mb-0")
+                ], width=3, className="text-center"),
+                dbc.Col([
+                    html.H6("💵 Käufe", className="text-muted mb-1"),
+                    html.H4(f"${total_buy:,.2f}", className="text-success mb-0")
+                ], width=3, className="text-center"),
+                dbc.Col([
+                    html.H6("💸 Verkäufe", className="text-muted mb-1"),
+                    html.H4(f"${total_sell:,.2f}", className="text-danger mb-0")
+                ], width=3, className="text-center"),
+                dbc.Col([
+                    html.H6("📈 Saldo", className="text-muted mb-1"),
+                    html.H4(f"${saldo:+,.2f}", className=f"text-{'success' if saldo >= 0 else 'danger'} mb-0")
+                ], width=3, className="text-center"),
+            ])
+        ])
+    ], className="mt-3 border-0", style={"background": "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)"})
     
     return is_open, table, summary, year_options
 
@@ -2054,6 +2758,32 @@ def monte_carlo_analyze_callback(n_clicks, symbol, history_period, forecast_days
         ], color="info", className="mb-3"),
         dcc.Graph(figure=fig),
     ])
+
+
+# ============== Theme Toggle Callback ==============
+app.clientside_callback(
+    """
+    function(n_light, n_dark) {
+        const triggered = dash_clientside.callback_context.triggered[0];
+        if (!triggered) return window.dash_clientside.no_update;
+        
+        const triggeredId = triggered.prop_id.split('.')[0];
+        
+        if (triggeredId === 'btn-light-mode') {
+            document.body.classList.add('light-mode');
+            return 'light';
+        } else if (triggeredId === 'btn-dark-mode') {
+            document.body.classList.remove('light-mode');
+            return 'dark';
+        }
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("theme-store", "data"),
+    Input("btn-light-mode", "n_clicks"),
+    Input("btn-dark-mode", "n_clicks"),
+    prevent_initial_call=True
+)
 
 
 # ============== Server starten ==============
