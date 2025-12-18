@@ -722,12 +722,6 @@ app.layout = dbc.Container([
                     # Gesamtportfolio unten
                     html.H6("📈 Gesamtportfolio-Entwicklung", className="mb-3"),
                     html.Div(id="portfolio-total-summary", className="mb-3"),
-                    dcc.Graph(id="portfolio-value-chart", style={"height": "400px"}),
-                    
-                    html.Hr(),
-                    
-                    html.H6("📉 Historischer Verlauf (30 Tage)", className="mb-3"),
-                    dcc.Graph(id="portfolio-total-value-chart", style={"height": "300px"}),
                 ], className="p-3"),
             ]),
         ], className="p-3"),
@@ -1297,8 +1291,6 @@ def update_stock_view(search, n1d, n1w, n1m, n3m, n1y, nmax):
     Output("portfolio-table", "children"),
     Output("portfolio-summary", "children"),
     Output("portfolio-chart", "figure"),
-    Output("portfolio-value-chart", "figure"),
-    Output("portfolio-total-value-chart", "figure"),
     Output("portfolio-stock-cards", "children"),
     Output("portfolio-total-summary", "children"),
     Input("portfolio-store", "data")
@@ -1321,8 +1313,6 @@ def update_portfolio(portfolio):
             html.P("Portfolio ist leer. Nutze Buy/Sell um Aktien hinzuzufügen.", className="text-muted"), 
             "", 
             empty_figure(), 
-            empty_figure(), 
-            empty_figure(),
             html.P("Keine Positionen vorhanden", className="text-muted"),
             ""
         )
@@ -1489,6 +1479,17 @@ def update_portfolio(portfolio):
             ])
         ], className="mt-3 border-0", style={"background": "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)"})
         
+        # Charts mit Fehlerbehandlung erstellen
+        try:
+            chart = create_portfolio_pie_chart(portfolio)
+        except Exception:
+            chart = empty_figure("Fehler beim Laden des Pie-Charts")
+        
+        try:
+            value_chart = create_portfolio_value_chart(portfolio)
+        except Exception as e:
+            value_chart = empty_figure(f"Fehler: {str(e)[:40]}")
+        
         # Gesamtportfolio Summary für den Wertentwicklung Tab
         total_summary = dbc.Card([
             dbc.CardBody([
@@ -1516,23 +1517,7 @@ def update_portfolio(portfolio):
             ])
         ], className="border-0", style={"background": "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)", "borderRadius": "12px"})
         
-        # Charts mit Fehlerbehandlung erstellen
-        try:
-            chart = create_portfolio_pie_chart(portfolio)
-        except Exception:
-            chart = empty_figure("Fehler beim Laden des Pie-Charts")
-        
-        try:
-            value_chart = create_portfolio_value_chart(portfolio)
-        except Exception as e:
-            value_chart = empty_figure(f"Fehler: {str(e)[:40]}")
-        
-        try:
-            total_chart = create_portfolio_total_value_chart(portfolio)
-        except Exception:
-            total_chart = empty_figure("Fehler beim Laden des Total-Charts")
-        
-        return table, summary, chart, value_chart, total_chart, cards_row, total_summary
+        return table, summary, chart, cards_row, total_summary
         
     except Exception as e:
         # Fallback bei allgemeinem Fehler
@@ -1540,7 +1525,7 @@ def update_portfolio(portfolio):
             html.P(f"Fehler beim Laden des Portfolios: {str(e)}", className="text-danger"),
             html.P("Bitte versuchen Sie es später erneut.", className="text-muted")
         ])
-        return error_msg, "", empty_figure(), empty_figure(), empty_figure(), "", ""
+        return error_msg, "", empty_figure(), "", ""
 
 # Market News
 @callback(
