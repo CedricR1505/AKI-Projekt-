@@ -19,5 +19,26 @@
     "symbol": "MSFT",
     "qty": 6,
     "price": 478.55999755859375
+  },
+  {
+    "timestamp": "2025-12-18T19:12:11.295203",
+    "type": "buy",
+    "symbol": "BTC-USD",
+    "qty": 1,
+    "price": 86455.3046875
+  },
+  {
+    "timestamp": "2025-12-18T20:04:45.718889",
+    "type": "buy",
+    "symbol": "MSFT",
+    "qty": 5,
+    "price": 485.5400085449219
+  },
+  {
+    "timestamp": "2025-12-18T20:23:06.608107",
+    "type": "sell",
+    "symbol": "AAPL",
+    "qty": 4,
+    "price": 271.45928955078125
   }
 ]
