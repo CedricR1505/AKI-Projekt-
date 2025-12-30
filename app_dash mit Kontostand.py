@@ -1,64 +1,194 @@
+# ================================================================================
+# STOCK DASHBOARD - Eine Web-Anwendung zur Aktienanalyse und Portfolio-Verwaltung
+# ================================================================================
+# Diese Anwendung ermöglicht:
+# - Echtzeit-Aktienkurse anzeigen
+# - Portfolio verwalten (Kaufen/Verkaufen)
+# - Nachrichten zu Aktien lesen
+# - KI-gestützte Analysen (Sentiment, Prognosen)
+# ================================================================================
+
+# ============== BIBLIOTHEKEN IMPORTIEREN ==============
+# Hier laden wir alle notwendigen Bibliotheken (Module), die wir für unsere App brauchen
+
+# DASH - Das Haupt-Framework für unsere Web-Anwendung
+# Dash ist ein Python-Framework zum Erstellen von interaktiven Web-Dashboards
 import dash
+
+# Aus Dash importieren wir verschiedene Komponenten:
+# - dcc (Dash Core Components): Interaktive Elemente wie Dropdowns, Graphen, Input-Felder
+# - html: HTML-Elemente wie Überschriften, Absätze, Divs
+# - Input/Output/State: Für die Reaktion auf Benutzeraktionen (Callbacks)
+# - callback: Dekorator um Funktionen als Callback zu markieren
+# - ctx: Context-Objekt um herauszufinden, welches Element geklickt wurde
+# - dash_table: Zum Erstellen von interaktiven Tabellen
 from dash import dcc, html, Input, Output, State, callback, ctx, dash_table
+
+# DASH BOOTSTRAP COMPONENTS - Schöne, vorgefertigte UI-Komponenten
+# Bootstrap ist ein CSS-Framework für ansprechende Designs
 import dash_bootstrap_components as dbc
+
+# PLOTLY - Bibliothek zum Erstellen von interaktiven Diagrammen/Charts
+# graph_objects gibt uns volle Kontrolle über die Diagramm-Erstellung
 import plotly.graph_objects as go
+
+# make_subplots erlaubt mehrere Diagramme in einem Bild
 from plotly.subplots import make_subplots
+
+# YFINANCE - Yahoo Finance API zum Abrufen von Aktiendaten
+# Ermöglicht kostenlosen Zugriff auf Aktienkurse, historische Daten etc.
 import yfinance as yf
+
+# REQUESTS - Bibliothek für HTTP-Anfragen (z.B. API-Aufrufe, Webseiten abrufen)
 import requests
+
+# JSON - Zum Lesen und Schreiben von JSON-Dateien (ein Datenformat)
 import json
+
+# RE (Regular Expressions) - Zum Suchen von Mustern in Texten
+# Wird hier für das Parsen von RSS-Feeds verwendet
 import re
+
+# PATHLIB - Modernes Modul für Dateipfad-Operationen
+# Path macht das Arbeiten mit Dateien und Ordnern einfacher
 from pathlib import Path
+
+# DATETIME - Zum Arbeiten mit Datum und Uhrzeit
 from datetime import datetime
+
+# UNESCAPE - Zum Dekodieren von HTML-Entities (z.B. &amp; wird zu &)
 from html import unescape
+
+# PANDAS - Mächtige Bibliothek für Datenanalyse und -manipulation
+# Wird oft für Tabellen und Zeitreihen verwendet
 import pandas as pd
 
-# Sentiment-Analyse Modul importieren
+# ============== SENTIMENT-ANALYSE MODUL IMPORTIEREN ==============
+# Hier importieren wir Funktionen aus unserer eigenen sentiment_analysis.py Datei
+# Diese Funktionen führen KI-gestützte Analysen durch
 from sentiment_analysis import (
-    VADER_AVAILABLE,
-    analyze_sentiment,
-    analyze_correlation,
-    get_sentiment_label,
-    get_correlation_label,
-    ARIMA_AVAILABLE,
-    analyze_forecast,
-    get_forecast_label,
-    analyze_monte_carlo,
-    get_monte_carlo_label,
+    VADER_AVAILABLE,        # Boolean: Ist die VADER-Bibliothek installiert?
+    analyze_sentiment,      # Funktion: Analysiert die Stimmung von Nachrichten
+    analyze_correlation,    # Funktion: Berechnet Korrelation zwischen Sentiment und Kurs
+    get_sentiment_label,    # Funktion: Gibt Label für Sentiment-Wert zurück (positiv/negativ)
+    get_correlation_label,  # Funktion: Gibt Label für Korrelationswert zurück
+    ARIMA_AVAILABLE,        # Boolean: Ist die ARIMA-Bibliothek installiert?
+    analyze_forecast,       # Funktion: Erstellt Kursprognosen mit ARIMA-Modell
+    get_forecast_label,     # Funktion: Gibt Label für Prognose zurück
+    analyze_monte_carlo,    # Funktion: Führt Monte-Carlo Simulation durch
+    get_monte_carlo_label,  # Funktion: Gibt Label für Monte-Carlo Ergebnis zurück
 )
 
-# ============== Daten-Pfade ==============
+# ================================================================================
+# KONFIGURATION: DATEIPFADE FÜR DIE DATENSPEICHERUNG
+# ================================================================================
+# Hier definieren wir, wo unsere Daten gespeichert werden sollen.
+# Die App speichert Portfolio, Transaktionen und Kontostand in JSON-Dateien.
+
+# DATA_DIR: Der Ordner, in dem alle Daten gespeichert werden
+# Path(__file__) = Pfad zu dieser Python-Datei
+# .parent = Der übergeordnete Ordner (der Ordner, in dem diese Datei liegt)
+# / "gui" = Unterordner namens "gui" erstellen/verwenden
 DATA_DIR = Path(__file__).parent / "gui"
+
+# mkdir(exist_ok=True) = Erstelle den Ordner, falls er nicht existiert
+# exist_ok=True verhindert einen Fehler, falls der Ordner schon da ist
 DATA_DIR.mkdir(exist_ok=True)
+
+# Hier definieren wir die Pfade zu unseren drei Datendateien:
+# 1. PORTFOLIO_FILE: Speichert welche Aktien der Nutzer besitzt
 PORTFOLIO_FILE = DATA_DIR / "portfolio.json"
+
+# 2. TRANSACTIONS_FILE: Speichert alle Käufe und Verkäufe (Historie)
 TRANSACTIONS_FILE = DATA_DIR / "transactions.json"
+
+# 3. BALANCE_FILE: Speichert den aktuellen Kontostand (virtuelles Geld)
 BALANCE_FILE = DATA_DIR / "balance.json"
 
-# ============== Market Overview Symbole ==============
+# ================================================================================
+# KONFIGURATION: MARKTÜBERSICHT-SYMBOLE
+# ================================================================================
+# Diese Liste definiert die Finanzinstrumente, die oben in der Marktübersicht
+# (dem "Ticker") angezeigt werden. Jedes Element ist ein Dictionary mit:
+# - "name": Der Anzeigename (was der Nutzer sieht)
+# - "symbol": Das Yahoo-Finance-Symbol zum Abrufen der Daten
+# - "decimals": Anzahl der Nachkommastellen bei der Anzeige
+# - "invert": Optional - wenn True, wird der Kehrwert angezeigt (für EUR/USD)
+
 MARKET_OVERVIEW_SYMBOLS = [
-    {"name": "DAX", "symbol": "^GDAXI", "decimals": 0},
-    {"name": "MDAX", "symbol": "^MDAXI", "decimals": 0},
-    {"name": "SDAX", "symbol": "^SDAXI", "decimals": 0},
-    {"name": "Dow", "symbol": "^DJI", "decimals": 0},
-    {"name": "Nasdaq", "symbol": "^IXIC", "decimals": 0},
-    {"name": "Gold", "symbol": "GC=F", "decimals": 2},
-    {"name": "Brent", "symbol": "BZ=F", "decimals": 2},
-    {"name": "BTC", "symbol": "BTC-USD", "decimals": 0},
-    {"name": "EUR/USD", "symbol": "EURUSD=X", "decimals": 4, "invert": True},
+    # Deutsche Aktienindizes
+    {"name": "DAX", "symbol": "^GDAXI", "decimals": 0},      # DAX 40 - Die 40 größten deutschen Unternehmen
+    {"name": "MDAX", "symbol": "^MDAXI", "decimals": 0},    # MDAX - Mittelgroße deutsche Unternehmen
+    {"name": "SDAX", "symbol": "^SDAXI", "decimals": 0},    # SDAX - Kleinere deutsche Unternehmen
+    
+    # US-amerikanische Aktienindizes
+    {"name": "Dow", "symbol": "^DJI", "decimals": 0},        # Dow Jones Industrial Average - 30 große US-Firmen
+    {"name": "Nasdaq", "symbol": "^IXIC", "decimals": 0},   # Nasdaq Composite - Tech-lastig
+    
+    # Rohstoffe
+    {"name": "Gold", "symbol": "GC=F", "decimals": 2},       # Goldpreis in USD pro Unze
+    {"name": "Brent", "symbol": "BZ=F", "decimals": 2},      # Brent-Öl Preis in USD pro Barrel
+    
+    # Kryptowährung
+    {"name": "BTC", "symbol": "BTC-USD", "decimals": 0},     # Bitcoin in US-Dollar
+    
+    # Währungspaar (mit invert=True wird aus USD/EUR -> EUR/USD)
+    {"name": "EUR/USD", "symbol": "EURUSD=X", "decimals": 4, "invert": True},  # Euro zu US-Dollar Kurs
 ]
 
-# ============== Hilfsfunktionen ==============
+# ================================================================================
+# HILFSFUNKTIONEN: DATENVERWALTUNG (Laden & Speichern)
+# ================================================================================
+# Diese Funktionen kümmern sich um das Speichern und Laden von Daten.
+# Wir verwenden JSON-Dateien als einfache "Datenbank".
+# ================================================================================
+
 def load_portfolio():
+    """
+    Lädt das Portfolio (Liste aller gekauften Aktien) aus der JSON-Datei.
+    
+    Funktionsweise:
+    1. Prüft, ob die Datei existiert
+    2. Wenn ja: Liest den Inhalt und wandelt JSON in Python-Liste um
+    3. Wenn nein oder Fehler: Gibt eine leere Liste zurück
+    
+    Rückgabe: Eine Liste von Dictionaries, z.B.:
+    [{"symbol": "AAPL", "qty": 10, "buy_price": 150.0}, ...]
+    """
+    # Prüfe ob die Datei existiert
     if PORTFOLIO_FILE.exists():
         try:
+            # Lese die Datei und parse den JSON-Inhalt
+            # encoding="utf-8" stellt sicher, dass Sonderzeichen korrekt gelesen werden
             return json.loads(PORTFOLIO_FILE.read_text(encoding="utf-8"))
         except:
+            # Bei Fehlern (z.B. ungültiges JSON) gebe leere Liste zurück
             return []
+    # Wenn Datei nicht existiert, gebe leere Liste zurück
     return []
 
+
 def save_portfolio(data):
+    """
+    Speichert das Portfolio in die JSON-Datei.
+    
+    Parameter:
+    - data: Liste von Dictionaries mit den Portfolio-Positionen
+    
+    Die Funktion wandelt die Python-Liste in JSON-Format um und speichert sie.
+    indent=2 macht die Datei menschenlesbar (schön formatiert).
+    """
     PORTFOLIO_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
+
 def load_transactions():
+    """
+    Lädt alle Transaktionen (Käufe und Verkäufe) aus der JSON-Datei.
+    
+    Rückgabe: Eine Liste aller vergangenen Transaktionen, z.B.:
+    [{"timestamp": "2024-01-15T10:30:00", "type": "buy", "symbol": "AAPL", 
+      "qty": 5, "price": 150.0}, ...]
+    """
     if TRANSACTIONS_FILE.exists():
         try:
             return json.loads(TRANSACTIONS_FILE.read_text(encoding="utf-8"))
@@ -66,150 +196,385 @@ def load_transactions():
             return []
     return []
 
+
 def save_transaction(tx):
+    """
+    Fügt eine neue Transaktion zur Transaktionshistorie hinzu.
+    
+    Parameter:
+    - tx: Dictionary mit Transaktionsdaten
+          {"timestamp": "...", "type": "buy/sell", "symbol": "...", 
+           "qty": Anzahl, "price": Preis}
+    
+    Die Funktion lädt erst alle bestehenden Transaktionen,
+    fügt die neue hinzu und speichert dann alles.
+    """
+    # Lade bestehende Transaktionen
     txs = load_transactions()
+    # Füge neue Transaktion hinzu
     txs.append(tx)
+    # Speichere alle Transaktionen
     TRANSACTIONS_FILE.write_text(json.dumps(txs, indent=2), encoding="utf-8")
 
+
 def load_balance():
+    """
+    Lädt den aktuellen Kontostand (virtuelles Geld zum Handeln).
+    
+    Rückgabe: Der Kontostand als Float (Dezimalzahl)
+    Standardwert: 10000.0 USD (wenn keine Datei existiert)
+    
+    Der Nutzer startet also mit 10.000$ virtuellem Geld.
+    """
     if BALANCE_FILE.exists():
         try:
             return float(json.loads(BALANCE_FILE.read_text(encoding="utf-8")))
         except:
+            # Bei Fehlern: Standardwert zurückgeben
             return 10000.0
+    # Wenn keine Datei existiert: Startwert 10.000$
     return 10000.0
 
+
 def save_balance(balance):
+    """
+    Speichert den aktuellen Kontostand in die JSON-Datei.
+    
+    Parameter:
+    - balance: Der neue Kontostand als Zahl (int oder float)
+    """
     BALANCE_FILE.write_text(json.dumps(balance), encoding="utf-8")
 
+# ================================================================================
+# HILFSFUNKTIONEN: AKTIENDATEN VON YAHOO FINANCE ABRUFEN
+# ================================================================================
+# Diese Funktionen holen Echtzeit-Daten von Yahoo Finance.
+# yfinance ist eine kostenlose Bibliothek für den Zugriff auf Finanzdaten.
+# ================================================================================
+
 def fetch_price(symbol):
+    """
+    Ruft den aktuellen Kurs und den Schlusskurs des Vortags für eine Aktie ab.
+    
+    Parameter:
+    - symbol: Das Börsensymbol der Aktie (z.B. "AAPL" für Apple, "TSLA" für Tesla)
+    
+    Rückgabe: Tuple (aktueller_preis, vorheriger_schlusskurs)
+              Beide Werte können None sein, wenn keine Daten verfügbar sind.
+    
+    Beispiel: fetch_price("AAPL") könnte (175.50, 174.20) zurückgeben
+    """
     try:
+        # Erstelle ein Ticker-Objekt für das Symbol
+        # Ein Ticker ist wie ein "Handle" für alle Daten zu einer Aktie
         t = yf.Ticker(symbol)
+        
+        # fast_info enthält schnell abrufbare Basisdaten
         fast = getattr(t, "fast_info", None)
+        
         if fast:
+            # Hole letzten Preis und vorherigen Schlusskurs
             price = getattr(fast, "last_price", None)
             prev = getattr(fast, "previous_close", None)
             return price, prev
     except:
+        # Bei Netzwerkfehlern oder ungültigen Symbolen: None zurückgeben
         pass
     return None, None
 
+
 def fetch_name(symbol):
+    """
+    Ruft den vollständigen Firmennamen für ein Aktien-Symbol ab.
+    
+    Parameter:
+    - symbol: Das Börsensymbol (z.B. "AAPL")
+    
+    Rückgabe: Der Firmenname (z.B. "Apple Inc.") oder das Symbol selbst als Fallback
+    """
     try:
         t = yf.Ticker(symbol)
+        # info enthält detaillierte Informationen zur Aktie
         info = t.info
+        # Versuche zuerst longName, dann shortName, sonst das Symbol selbst
         return info.get("longName") or info.get("shortName") or symbol
     except:
         return symbol
 
+
 def fetch_stock_history(symbol, period="1mo", interval="1d"):
+    """
+    Ruft historische Kursdaten für eine Aktie ab.
+    
+    Parameter:
+    - symbol: Das Börsensymbol
+    - period: Zeitraum der Daten. Mögliche Werte:
+              "1d" (1 Tag), "5d" (5 Tage), "1mo" (1 Monat), "3mo" (3 Monate),
+              "6mo" (6 Monate), "1y" (1 Jahr), "5y" (5 Jahre), "max" (alle Daten)
+    - interval: Zeitabstand zwischen Datenpunkten:
+                "1m" (1 Minute), "5m" (5 Min), "15m", "1h", "1d" (1 Tag), "1wk" (1 Woche)
+    
+    Rückgabe: Ein Pandas DataFrame mit Spalten:
+              Open, High, Low, Close, Volume (Eröffnung, Hoch, Tief, Schluss, Volumen)
+              Der Index ist das Datum/die Zeit.
+    """
     try:
         t = yf.Ticker(symbol)
+        # history() ruft die historischen Daten ab
         hist = t.history(period=period, interval=interval)
         return hist
     except:
         return None
 
 def search_stocks(query):
+    """
+    Sucht nach Aktien basierend auf einem Suchbegriff (Name oder Symbol).
+    
+    Diese Funktion verwendet die Yahoo Finance Such-API, um passende
+    Aktien, ETFs, Indizes oder Kryptowährungen zu finden.
+    
+    Parameter:
+    - query: Der Suchbegriff (z.B. "Apple", "Tesla", "AAPL")
+    
+    Rückgabe: Eine Liste von Dictionaries mit gefundenen Wertpapieren:
+    [{"symbol": "AAPL", "name": "Apple Inc.", "exchange": "NASDAQ"}, ...]
+    
+    Wenn die Suche fehlschlägt oder nichts gefunden wird: leere Liste []
+    """
+    # Mindestens 2 Zeichen benötigt für sinnvolle Suche
     if not query or len(query) < 2:
         return []
+    
     try:
+        # Yahoo Finance Such-API URL
+        # quotesCount=10: Maximal 10 Ergebnisse
+        # newsCount=0: Keine News-Ergebnisse (nur Wertpapiere)
         url = f"https://query1.finance.yahoo.com/v1/finance/search?q={query}&quotesCount=10&newsCount=0"
+        
+        # HTTP GET-Anfrage mit Timeout von 5 Sekunden
+        # User-Agent Header simuliert einen normalen Browser
         resp = requests.get(url, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+        
+        # JSON-Antwort parsen
         data = resp.json()
+        
         results = []
+        # Durchlaufe alle gefundenen "quotes" (Wertpapiere)
         for q in data.get("quotes", []):
+            # Filtere nach Wertpapiertypen, die wir unterstützen
+            # EQUITY = Aktie, ETF = Börsengehandelter Fonds, etc.
             if q.get("quoteType") in ["EQUITY", "ETF", "INDEX", "CRYPTOCURRENCY", "CURRENCY"]:
                 results.append({
                     "symbol": q.get("symbol"),
                     "name": q.get("shortname") or q.get("longname") or q.get("symbol"),
-                    "exchange": q.get("exchange", "")
+                    "exchange": q.get("exchange", "")  # Börse (z.B. NASDAQ, NYSE)
                 })
         return results
     except:
+        # Bei Netzwerkfehlern: leere Liste zurückgeben
         return []
 
 def fetch_google_news(symbol, limit=20):
+    """
+    Ruft aktuelle Nachrichten zu einer Aktie von Google News ab.
+    
+    Die Funktion nutzt den RSS-Feed von Google News, um deutschsprachige
+    Nachrichten zu einem bestimmten Suchbegriff (meist Aktien-Symbol) zu holen.
+    
+    Parameter:
+    - symbol: Der Suchbegriff (z.B. "AAPL", "Tesla", "Bitcoin")
+    - limit: Maximale Anzahl der zurückgegebenen Nachrichten (Standard: 20)
+    
+    Rückgabe: Eine Liste von Dictionaries mit News-Daten:
+    [{"title": "Schlagzeile...", "link": "https://...", 
+      "pubDate": "Mon, 15 Jan 2024...", "source": "Handelsblatt",
+      "symbol": "AAPL"}, ...]
+    
+    RSS (Really Simple Syndication) ist ein XML-Format für News-Feeds.
+    """
     try:
+        # Google News RSS-Feed URL
+        # hl=de: Sprache Deutsch
+        # gl=DE: Region Deutschland
+        # ceid=DE:de: Ländercode
         url = f"https://news.google.com/rss/search?q={symbol}+stock&hl=de&gl=DE&ceid=DE:de"
+        
+        # RSS-Feed abrufen
         resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        
+        # Alle <item>-Tags finden (jeder <item> ist eine Nachricht)
+        # re.findall sucht alle Vorkommen des Musters
+        # re.DOTALL lässt '.' auch Zeilenumbrüche matchen
         items = re.findall(r"<item>(.*?)</item>", resp.text, re.DOTALL)
+        
         news = []
+        # Verarbeite die gefundenen Items (maximal 'limit' Stück)
         for item in items[:limit]:
+            # Extrahiere Titel, Link, Veröffentlichungsdatum und Quelle
+            # mit Regular Expressions (Muster-Suche)
             title_m = re.search(r"<title>(.*?)</title>", item)
             link_m = re.search(r"<link>(.*?)</link>", item)
             pub_m = re.search(r"<pubDate>(.*?)</pubDate>", item)
             source_m = re.search(r"<source.*?>(.*?)</source>", item)
+            
+            # Wenn gefunden, extrahiere den Text (group(1)), sonst Fallback-Wert
+            # unescape() wandelt HTML-Entities zurück (z.B. &amp; -> &)
             title = unescape(title_m.group(1)) if title_m else "News"
             link = link_m.group(1) if link_m else ""
             pub = pub_m.group(1) if pub_m else ""
             source = unescape(source_m.group(1)) if source_m else ""
-            news.append({"title": title, "link": link, "pubDate": pub, "source": source, "symbol": symbol})
+            
+            news.append({
+                "title": title,
+                "link": link,
+                "pubDate": pub,
+                "source": source,
+                "symbol": symbol  # Füge Symbol hinzu, damit wir wissen, zu welcher Aktie die News gehört
+            })
         return news
     except:
+        # Bei Fehlern: leere Liste zurückgeben
         return []
 
 def format_volume(vol):
+    """
+    Formatiert große Zahlen (Handelsvolumen) in lesbare Kurzform.
+    
+    Handelsvolumen sind oft sehr große Zahlen (Millionen oder Milliarden).
+    Diese Funktion wandelt sie in lesbare Kürzel um.
+    
+    Parameter:
+    - vol: Das Handelsvolumen als Zahl (oder None)
+    
+    Rückgabe: Formatierte Zeichenkette
+    
+    Beispiele:
+    - 1234567890 -> "1.23B" (Milliarden/Billions)
+    - 5678000 -> "5.68M" (Millionen)
+    - 45000 -> "45.0K" (Tausend)
+    - 500 -> "500"
+    - None -> "n/a"
+    """
     if vol is None:
-        return "n/a"
-    if vol >= 1_000_000_000:
+        return "n/a"  # "not available" - nicht verfügbar
+    
+    # Prüfe in absteigender Größenordnung
+    if vol >= 1_000_000_000:  # >= 1 Milliarde (1B)
         return f"{vol/1_000_000_000:.2f}B"
-    if vol >= 1_000_000:
+    if vol >= 1_000_000:       # >= 1 Million (1M)
         return f"{vol/1_000_000:.2f}M"
-    if vol >= 1_000:
+    if vol >= 1_000:           # >= 1 Tausend (1K)
         return f"{vol/1_000:.1f}K"
+    
+    # Kleine Zahlen einfach als String zurückgeben
     return str(vol)
 
+# ================================================================================
+# HILFSFUNKTIONEN: DIAGRAMME/CHARTS ERSTELLEN
+# ================================================================================
+# Diese Funktionen erstellen interaktive Plotly-Diagramme für die Visualisierung.
+# Plotly ist eine Bibliothek für interaktive, webfähige Graphen.
+# ================================================================================
+
 def create_stock_chart(symbol, period="1mo", interval="1d"):
+    """
+    Erstellt ein Liniendiagramm (Kursverlauf) für eine Aktie.
+    
+    Parameter:
+    - symbol: Das Aktien-Symbol (z.B. "AAPL")
+    - period: Zeitraum (z.B. "1d", "1mo", "1y")
+    - interval: Datenintervall (z.B. "5m", "1d")
+    
+    Rückgabe: Ein Plotly Figure-Objekt (das fertige Diagramm)
+    
+    Features:
+    - Grüne Linie wenn Kurs gestiegen, rote wenn gefallen
+    - Leichte Färbung unter der Kurslinie
+    - Prozentuale Veränderung im Titel
+    - Optimale Y-Achsen-Skalierung
+    """
+    # Hole historische Kursdaten
     hist = fetch_stock_history(symbol, period, interval)
+    
+    # Wenn keine Daten vorhanden: zeige Fehlermeldung im Chart
     if hist is None or hist.empty:
         fig = go.Figure()
+        # Füge eine Text-Annotation in der Mitte des Charts hinzu
         fig.add_annotation(text="Keine Daten verfügbar", x=0.5, y=0.5, showarrow=False, font=dict(size=16))
+        # Verstecke die Achsen bei leerem Chart
         fig.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False))
         return fig
     
-    start_price = hist["Close"].iloc[0]
-    end_price = hist["Close"].iloc[-1]
-    is_positive = end_price >= start_price
+    # Berechne ob der Kurs gestiegen oder gefallen ist
+    start_price = hist["Close"].iloc[0]   # Erster Schlusskurs (iloc[0] = erste Zeile)
+    end_price = hist["Close"].iloc[-1]    # Letzter Schlusskurs (iloc[-1] = letzte Zeile)
+    is_positive = end_price >= start_price  # True wenn Kurs gestiegen
+    
+    # Wähle Farbe basierend auf Kursentwicklung
+    # #22c55e = Grün (positiv), #ef4444 = Rot (negativ)
     color = "#22c55e" if is_positive else "#ef4444"
     
-    # Y-Achse zoomen
-    y_min = hist["Close"].min()
-    y_max = hist["Close"].max()
-    y_range = y_max - y_min
-    if y_range < 0.01 * y_max:
-        padding = 0.005 * y_max
-    else:
-        padding = y_range * 0.1
+    # ===== Y-Achsen-Skalierung berechnen =====
+    # Wir wollen die Y-Achse optimal zoomen, damit der Kursverlauf gut sichtbar ist
+    y_min = hist["Close"].min()  # Tiefster Kurs
+    y_max = hist["Close"].max()  # Höchster Kurs
+    y_range = y_max - y_min      # Spannweite
     
+    # Berechne Padding (Abstand am Rand) für bessere Optik
+    if y_range < 0.01 * y_max:   # Wenn Kurs sehr stabil (wenig Schwankung)
+        padding = 0.005 * y_max  # Kleines Padding
+    else:
+        padding = y_range * 0.1  # 10% der Spannweite als Padding
+    
+    # ===== Diagramm erstellen =====
     fig = go.Figure()
+    
+    # Füge die Kurslinie hinzu
     fig.add_trace(go.Scatter(
-        x=hist.index,
-        y=hist["Close"],
-        mode="lines",
-        line=dict(color=color, width=2),
-        fill="tozeroy",
+        x=hist.index,              # X-Achse: Datum/Zeit
+        y=hist["Close"],           # Y-Achse: Schlusskurse
+        mode="lines",              # Nur Linien, keine Punkte
+        line=dict(color=color, width=2),  # Linienfarbe und -dicke
+        fill="tozeroy",            # Fülle den Bereich bis zur X-Achse
+        # Halbtransparente Füllfarbe (RGBA: Rot, Grün, Blau, Alpha/Transparenz)
         fillcolor=f"rgba({34 if is_positive else 239}, {197 if is_positive else 68}, {94 if is_positive else 68}, 0.1)",
-        name=symbol,
-        hovertemplate="%{y:.2f}<extra></extra>"
+        name=symbol,               # Name für die Legende
+        hovertemplate="%{y:.2f}<extra></extra>"  # Tooltip-Format (2 Nachkommastellen)
     ))
     
+    # Berechne prozentuale Veränderung für den Titel
     pct_change = ((end_price - start_price) / start_price) * 100
-    sign = "+" if pct_change >= 0 else ""
+    sign = "+" if pct_change >= 0 else ""  # Pluszeichen bei positiven Werten
     
+    # ===== Layout/Design des Diagramms anpassen =====
     fig.update_layout(
+        # Titel mit Symbol und prozentualer Veränderung
         title=dict(text=f"{symbol} ({sign}{pct_change:.2f}%)", font=dict(size=16, color=color)),
+        # Y-Achse: Bereich, Zahlenformat, Gitternetzfarbe
         yaxis=dict(range=[y_min - padding, y_max + padding], tickformat=",.2f", gridcolor="#e5e7eb"),
+        # X-Achse: Gitternetzlinien anzeigen
         xaxis=dict(showgrid=True, gridcolor="#e5e7eb"),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-        margin=dict(l=50, r=20, t=50, b=50),
-        hovermode="x unified",
-        showlegend=False
+        plot_bgcolor="white",       # Hintergrundfarbe des Plots
+        paper_bgcolor="white",      # Hintergrundfarbe außerhalb des Plots
+        margin=dict(l=50, r=20, t=50, b=50),  # Ränder (left, right, top, bottom)
+        hovermode="x unified",      # Tooltip-Modus: einheitlich für X-Position
+        showlegend=False            # Keine Legende anzeigen
     )
     return fig
 
 def create_portfolio_pie_chart(portfolio):
+    """
+    Erstellt ein Kreisdiagramm (Pie Chart) der Portfolio-Zusammensetzung.
+    
+    Das Diagramm zeigt, wie das investierte Geld auf verschiedene
+    Aktien verteilt ist (in Prozent und absoluten Werten).
+    
+    Parameter:
+    - portfolio: Liste der Portfolio-Positionen aus der JSON-Datei
+    
+    Rückgabe: Ein Plotly Figure-Objekt (Kreisdiagramm)
+    """
+    # Wenn Portfolio leer ist, zeige Nachricht
     if not portfolio:
         fig = go.Figure()
         fig.add_annotation(text="Portfolio ist leer", x=0.5, y=0.5, showarrow=False, font=dict(size=16, color="white"))
@@ -217,90 +582,130 @@ def create_portfolio_pie_chart(portfolio):
         return fig
     
     try:
-        labels = []
-        values = []
-        colors = []
+        labels = []   # Namen/Symbole für das Diagramm
+        values = []   # Werte (aktueller Wert der Position)
+        colors = []   # Farben für jeden Sektor
         
+        # Durchlaufe alle Positionen im Portfolio
         for item in portfolio:
             symbol = item["symbol"]
-            qty = item["qty"]
+            qty = item["qty"]  # Anzahl der Aktien
+            
+            # Hole aktuellen Preis
             current_price, _ = fetch_price(symbol)
+            
             if current_price:
+                # Berechne aktuellen Wert der Position
                 value = qty * current_price
                 values.append(value)
                 labels.append(symbol)
-                # Zufällige Farben oder feste Palette
+                
+                # Generiere eine Farbe basierend auf dem Symbol
+                # hash() erzeugt eine Zahl aus dem Symbol, % 360 gibt uns einen Farbwinkel (HSL)
                 colors.append(f"hsl({hash(symbol) % 360}, 70%, 50%)")
         
+        # Wenn keine Preise verfügbar
         if not values:
             fig = go.Figure()
             fig.add_annotation(text="Keine aktuellen Preise verfügbar", x=0.5, y=0.5, showarrow=False, font=dict(size=16, color="white"))
             fig.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
             return fig
         
+        # Erstelle das Kreisdiagramm
         fig = go.Figure(data=[go.Pie(
-            labels=labels,
-            values=values,
-            marker_colors=colors,
-            textinfo='label+percent',
-            insidetextorientation='radial',
-            textfont=dict(color="white")
+            labels=labels,              # Beschriftungen der Sektoren
+            values=values,              # Werte (bestimmen Größe der Sektoren)
+            marker_colors=colors,       # Farben der Sektoren
+            textinfo='label+percent',   # Zeige Label und Prozentwert
+            insidetextorientation='radial',  # Text radial ausrichten
+            textfont=dict(color="white")     # Weiße Schrift
         )])
         
+        # Layout anpassen
         fig.update_layout(
             title=dict(text="Portfolio-Zusammensetzung", font=dict(color="white")),
-            showlegend=False,
+            showlegend=False,  # Keine separate Legende (Labels sind im Chart)
             margin=dict(l=20, r=20, t=50, b=20),
-            paper_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",  # Transparenter Hintergrund
             plot_bgcolor="rgba(0,0,0,0)"
         )
         
         return fig
     except Exception:
+        # Bei Fehlern: Fehler-Chart anzeigen
         fig = go.Figure()
         fig.add_annotation(text="Fehler beim Laden", x=0.5, y=0.5, showarrow=False, font=dict(size=16, color="white"))
         fig.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
         return fig
 
 def create_portfolio_value_chart(portfolio):
-    """Erstellt ein Liniendiagramm mit Kauflinie, grün/rot Bereichen und Gewinn/Verlust-Anzeige."""
+    """
+    Erstellt ein Liniendiagramm zur Visualisierung der Portfolio-Wertentwicklung.
     
+    Dieses Diagramm zeigt für jede Aktie im Portfolio:
+    - Den Kaufwert (investiertes Geld) als gestrichelte Linie
+    - Den aktuellen Wert als durchgezogene Linie
+    - Grüne Bereiche bei Gewinn, rote bei Verlust
+    - Gewinn/Verlust-Annotationen über jeder Position
+    
+    Parameter:
+    - portfolio: Liste der Portfolio-Positionen
+    
+    Rückgabe: Ein Plotly Figure-Objekt
+    """
+    
+    # Hilfsfunktion für leere/Fehler-Charts
     def empty_fig(text):
+        """Erstellt ein leeres Diagramm mit einer Nachricht."""
         fig = go.Figure()
         fig.add_annotation(text=text, x=0.5, y=0.5, showarrow=False, font=dict(size=16, color="white"))
         fig.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
         return fig
     
+    # Prüfe ob Portfolio Daten enthält
     if not portfolio:
         return empty_fig("Portfolio ist leer")
     
     try:
-        # Daten sammeln
-        data_list = []
-        total_invested = 0
-        total_current = 0
+        # ===== Daten sammeln =====
+        data_list = []      # Liste für alle Portfolio-Daten
+        total_invested = 0  # Summe aller investierten Beträge
+        total_current = 0   # Summe aller aktuellen Werte
         
+        # Durchlaufe jede Position im Portfolio
         for item in portfolio:
             symbol = item.get("symbol", "")
-            qty = item.get("qty", 0)
+            qty = item.get("qty", 0)  # Anzahl der Aktien
+            
+            # Kaufpreis: Versuche "buy_price", sonst "avg_price"
             buy_price = item.get("buy_price") or item.get("avg_price", 0)
+            
+            # Berechne investierten Betrag
             invested = qty * buy_price
             total_invested += invested
             
+            # Hole aktuellen Preis
             try:
                 current_price, _ = fetch_price(symbol)
             except:
                 current_price = None
-                
+            
+            # Wenn aktueller Preis verfügbar, berechne Statistiken
             if current_price:
-                current_value = qty * current_price
+                current_value = qty * current_price  # Aktueller Wert
                 total_current += current_value
-                pnl = current_value - invested
+                pnl = current_value - invested       # Profit and Loss (Gewinn/Verlust)
+                
+                # Prozentuale Veränderung berechnen (Vorsicht: Division durch 0 vermeiden)
                 pnl_pct = (pnl / invested) * 100 if invested > 0 else 0
+                
+                # Hole Firmennamen
                 try:
                     name = fetch_name(symbol) or symbol
                 except:
                     name = symbol
+                
+                # Füge alle Daten zur Liste hinzu
                 data_list.append({
                     "symbol": symbol,
                     "name": name,
@@ -313,93 +718,107 @@ def create_portfolio_value_chart(portfolio):
                     "qty": qty
                 })
         
+        # Wenn keine Daten gesammelt wurden
         if not data_list:
             return empty_fig("Keine aktuellen Kursdaten verfügbar")
         
-        # Sortieren nach Symbol
+        # Sortiere alphabetisch nach Symbol
         data_list.sort(key=lambda x: x["symbol"])
         
+        # ===== Daten für das Diagramm vorbereiten =====
+        # Kürze lange Namen auf 15 Zeichen
         symbols = [d["name"][:15] if d["name"] else d["symbol"] for d in data_list]
         invested_values = [d["invested"] for d in data_list]
         current_values = [d["current"] for d in data_list]
         pnl_values = [d["pnl"] for d in data_list]
         
+        # ===== Diagramm erstellen =====
         fig = go.Figure()
         
-        # Füllbereich: Grün über Kauflinie, Rot unter Kauflinie
+        # ===== Füllbereiche für Gewinn/Verlust erstellen =====
+        # Für jede Position einen farbigen Bereich zwischen Kaufwert und aktuellem Wert
         for i, d in enumerate(data_list):
+            # Erstelle ein Rechteck um die Position (0.3 Einheiten breit)
             x_pos = [i - 0.3, i + 0.3, i + 0.3, i - 0.3]
+            
             if d["current"] >= d["invested"]:
-                # Grüner Bereich (Gewinn)
+                # ===== GRÜNER BEREICH (Gewinn) =====
                 y_fill = [d["invested"], d["invested"], d["current"], d["current"]]
                 fig.add_trace(go.Scatter(
                     x=x_pos, y=y_fill,
-                    fill="toself",
-                    fillcolor="rgba(34, 197, 94, 0.3)",
-                    line=dict(width=0),
+                    fill="toself",  # Fülle die Form
+                    fillcolor="rgba(34, 197, 94, 0.3)",  # Halbtransparentes Grün
+                    line=dict(width=0),  # Keine Umrandung
                     showlegend=False,
-                    hoverinfo="skip"
+                    hoverinfo="skip"  # Kein Tooltip für Füllung
                 ))
             else:
-                # Roter Bereich (Verlust)
+                # ===== ROTER BEREICH (Verlust) =====
                 y_fill = [d["current"], d["current"], d["invested"], d["invested"]]
                 fig.add_trace(go.Scatter(
                     x=x_pos, y=y_fill,
                     fill="toself",
-                    fillcolor="rgba(239, 68, 68, 0.3)",
+                    fillcolor="rgba(239, 68, 68, 0.3)",  # Halbtransparentes Rot
                     line=dict(width=0),
                     showlegend=False,
                     hoverinfo="skip"
                 ))
         
-        # Kauflinie (gestrichelt)
+        # ===== Kaufwert-Linie (gestrichelt, gelb) =====
         fig.add_trace(go.Scatter(
-            x=list(range(len(symbols))),
+            x=list(range(len(symbols))),  # X-Positionen: 0, 1, 2, ...
             y=invested_values,
-            mode="lines+markers",
+            mode="lines+markers",          # Linie mit Punkten
             name="Kaufwert",
-            line=dict(color="#fbbf24", width=3, dash="dash"),
-            marker=dict(size=10, symbol="diamond"),
+            line=dict(color="#fbbf24", width=3, dash="dash"),  # Gelb, gestrichelt
+            marker=dict(size=10, symbol="diamond"),  # Diamant-Marker
             hovertemplate="<b>Kaufwert</b><br>%{y:,.2f} USD<extra></extra>"
         ))
         
-        # Aktueller Wert (durchgezogen)
+        # ===== Aktueller Wert-Linie (durchgezogen, blau mit farbigen Punkten) =====
+        # Farbe der Punkte: Grün bei Gewinn, Rot bei Verlust
         colors = ["#22c55e" if pnl >= 0 else "#ef4444" for pnl in pnl_values]
+        
         fig.add_trace(go.Scatter(
             x=list(range(len(symbols))),
             y=current_values,
             mode="lines+markers",
             name="Aktueller Wert",
-            line=dict(color="#3b82f6", width=3),
+            line=dict(color="#3b82f6", width=3),  # Blau
             marker=dict(size=12, color=colors, line=dict(width=2, color="white")),
             hovertemplate="<b>Aktueller Wert</b><br>%{y:,.2f} USD<extra></extra>"
         ))
         
-        # Gewinn/Verlust Annotationen an der Seite
+        # ===== Gewinn/Verlust-Annotationen über den Positionen =====
         annotations = []
         for i, d in enumerate(data_list):
             color = "#22c55e" if d["pnl"] >= 0 else "#ef4444"
             sign = "+" if d["pnl"] >= 0 else ""
+            
+            # Platziere Text über dem höchsten Punkt
             annotations.append(dict(
                 x=i,
-                y=max(d["current"], d["invested"]) * 1.08,
+                y=max(d["current"], d["invested"]) * 1.08,  # 8% über dem höchsten Wert
                 text=f"<b>{sign}{d['pnl']:.0f}$</b><br><span style='font-size:10px'>({sign}{d['pnl_pct']:.1f}%)</span>",
                 showarrow=False,
                 font=dict(color=color, size=11),
                 align="center"
             ))
         
-        # Gesamt P/L oben rechts
+        # ===== Gesamt P/L berechnen =====
         total_pnl = total_current - total_invested
         total_pnl_pct = (total_pnl / total_invested) * 100 if total_invested > 0 else 0
         total_color = "#22c55e" if total_pnl >= 0 else "#ef4444"
         total_sign = "+" if total_pnl >= 0 else ""
         
+        # ===== Layout konfigurieren =====
         fig.update_layout(
+            # Titel mit Gesamt-P/L
             title=dict(
                 text=f"Portfolio-Wertentwicklung | Gesamt: <span style='color:{total_color}'>{total_sign}{total_pnl:,.2f}$ ({total_sign}{total_pnl_pct:.1f}%)</span>",
                 font=dict(size=14, color="white")
             ),
+            # X-Achse: Aktien-Namen als Beschriftung
             xaxis=dict(
                 tickmode="array",
                 tickvals=list(range(len(symbols))),
@@ -407,6 +826,7 @@ def create_portfolio_value_chart(portfolio):
                 tickfont=dict(color="white"),
                 gridcolor="rgba(255,255,255,0.1)"
             ),
+            # Y-Achse: Wert in USD
             yaxis=dict(
                 title="Wert (USD)",
                 tickformat=",.0f",
@@ -414,7 +834,8 @@ def create_portfolio_value_chart(portfolio):
                 titlefont=dict(color="white"),
                 gridcolor="rgba(255,255,255,0.1)"
             ),
-            annotations=annotations,
+            annotations=annotations,  # P/L-Texte hinzufügen
+            # Legende horizontal oben
             legend=dict(
                 orientation="h",
                 yanchor="bottom",
@@ -436,11 +857,26 @@ def create_portfolio_value_chart(portfolio):
 
 
 def create_portfolio_total_value_chart(portfolio, days=30):
-    """Erstellt eine Zeitreihe des Gesamtwerts des Portfolios über die letzten `days` Tage.
-    Für jede Position werden historische Schlusskurse abgefragt und mit der Menge multipliziert.
     """
-    import datetime
+    Erstellt eine Zeitreihe (Liniendiagramm) des Gesamtwerts des Portfolios.
+    
+    Diese Funktion zeigt, wie sich der Gesamtwert aller Positionen im Portfolio
+    über die letzten X Tage entwickelt hat. Für jede Aktie werden historische
+    Schlusskurse abgerufen und mit der Anzahl der gehaltenen Aktien multipliziert.
+    
+    Parameter:
+    - portfolio: Liste der Portfolio-Positionen
+    - days: Anzahl der Tage für die Zeitreihe (Standard: 30)
+    
+    Rückgabe: Ein Plotly Figure-Objekt mit Zeitreihen-Diagramm
+    
+    Das Diagramm zeigt:
+    - Den täglichen Gesamtwert des Portfolios (türkise Linie)
+    - Den investierten Betrag als Referenz (blaue gestrichelte Linie)
+    """
+    import datetime  # Wird für Datums-Operationen benötigt
 
+    # Hilfsfunktion für leere Charts
     def empty_fig(text):
         fig = go.Figure()
         fig.add_annotation(text=text, x=0.5, y=0.5, showarrow=False, font=dict(size=16, color="white"))
@@ -451,66 +887,99 @@ def create_portfolio_total_value_chart(portfolio, days=30):
         return empty_fig("Keine Positionen im Portfolio")
 
     try:
+        # Dictionary zum Sammeln der Tageswerte
+        # Struktur: {datum: gesamtwert, ...}
         totals = {}
+        
+        # Zeitraum berechnen: von heute bis X Tage zurück
         end = datetime.date.today()
         start = end - datetime.timedelta(days=days)
 
+        # Durchlaufe jede Position im Portfolio
         for item in portfolio:
             symbol = item.get("symbol")
-            qty = item.get("qty", 0)
+            qty = item.get("qty", 0)  # Anzahl der Aktien
+            
+            # Überspringe ungültige Einträge
             if not symbol or qty == 0:
                 continue
 
-            # hole historische Preise (täglicher Schlusskurs)
+            # Hole historische Preise (täglicher Schlusskurs)
             hist = fetch_stock_history(symbol, period=f"{days}d", interval="1d")
             if hist is None or hist.empty:
                 continue
 
+            # Durchlaufe jeden Tag in den historischen Daten
             for idx, row in hist.iterrows():
-                # idx ist ein Timestamp
+                # idx ist ein Timestamp (Datum mit Uhrzeit)
                 try:
-                    dt = idx.date()
+                    dt = idx.date()  # Konvertiere zu reinem Datum
                 except Exception:
-                    # falls idx kein DatetimeIndex-Element ist
+                    # Fallback für andere Index-Formate
                     try:
                         dt = datetime.date.fromtimestamp(idx.timestamp())
                     except Exception:
                         continue
 
+                # Prüfe ob das Datum im gewünschten Zeitraum liegt
                 if dt < start or dt > end:
                     continue
 
+                # Berechne den Wert dieser Position an diesem Tag
                 try:
+                    # Hole den Schlusskurs (Close)
                     close = row.get("Close") if isinstance(row, dict) or hasattr(row, "get") else row["Close"]
-                    value = float(close) * qty
+                    value = float(close) * qty  # Wert = Preis * Anzahl
                 except Exception:
                     continue
 
+                # Addiere zum Tageswert (setdefault erstellt den Eintrag falls nicht vorhanden)
                 totals.setdefault(dt, 0.0)
                 totals[dt] += value
 
+        # Wenn keine Daten gesammelt wurden
         if not totals:
             return empty_fig("Keine historischen Preise verfügbar")
 
+        # Sortiere die Daten nach Datum
         dates = sorted(totals.keys())
         values = [totals[d] for d in dates]
 
+        # ===== Diagramm erstellen =====
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=dates, y=values, mode="lines+markers", name="Gesamtwert", line=dict(color="#0ea5a4")))
+        
+        # Hauptlinie: Gesamtwert über Zeit
+        fig.add_trace(go.Scatter(
+            x=dates, 
+            y=values, 
+            mode="lines+markers",  # Linie mit Punkten
+            name="Gesamtwert", 
+            line=dict(color="#0ea5a4")  # Türkis
+        ))
 
-        # Gesamtinvestition als Referenz (aktueller investierter Betrag)
+        # Referenzlinie: Investierter Betrag (bleibt konstant)
+        # Berechne den Gesamtbetrag, der ursprünglich investiert wurde
         total_invested = sum((item.get("qty", 0) * (item.get("buy_price") or item.get("avg_price", 0))) for item in portfolio)
-        fig.add_trace(go.Scatter(x=dates, y=[total_invested] * len(dates), mode="lines", name="Investiert (aktuell)", line=dict(color="#2563eb", dash="dash")))
+        
+        # Füge horizontale Linie für den investierten Betrag hinzu
+        fig.add_trace(go.Scatter(
+            x=dates, 
+            y=[total_invested] * len(dates),  # Gleicher Wert für alle Tage
+            mode="lines", 
+            name="Investiert (aktuell)", 
+            line=dict(color="#2563eb", dash="dash")  # Blau, gestrichelt
+        ))
 
+        # ===== Layout konfigurieren =====
         fig.update_layout(
             title=dict(text=f"Gesamtwert des Portfolios (letzte {days} Tage)", font=dict(color="white")),
             xaxis_title="Datum",
             yaxis_title="Wert (USD)",
-            hovermode="x unified",
+            hovermode="x unified",  # Einheitlicher Tooltip bei Hover
             legend=dict(font=dict(color="white")),
             margin=dict(l=40, r=20, t=50, b=40),
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(30,30,30,0.5)",
+            paper_bgcolor="rgba(0,0,0,0)",  # Transparenter Hintergrund
+            plot_bgcolor="rgba(30,30,30,0.5)",  # Halbtransparenter Plot-Hintergrund
             xaxis=dict(tickfont=dict(color="white"), titlefont=dict(color="white"), gridcolor="rgba(255,255,255,0.1)"),
             yaxis=dict(tickfont=dict(color="white"), titlefont=dict(color="white"), gridcolor="rgba(255,255,255,0.1)")
         )
@@ -519,18 +988,42 @@ def create_portfolio_total_value_chart(portfolio, days=30):
     except Exception:
         return empty_fig("Fehler beim Laden der Daten")
 
-# ============== App Initialisierung ==============
+
+# ================================================================================
+# APP INITIALISIERUNG
+# ================================================================================
+# Hier wird die Dash-Anwendung erstellt und konfiguriert.
+# Dash ist das Framework, das unsere Web-App antreibt.
+# ================================================================================
+
+# Erstelle die Dash-App
 app = dash.Dash(
-    __name__, 
+    __name__,  # Name des Moduls (wird für Pfade verwendet)
     external_stylesheets=[
-        dbc.themes.DARKLY,  # Dark Theme für bessere News-Darstellung
-        "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"  # FontAwesome Icons
+        dbc.themes.DARKLY,  # Bootstrap Dark Theme für ein modernes dunkles Design
+        # FontAwesome für Icons (wie ❤, ⭐, etc. aber als Vektorgrafiken)
+        "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
     ], 
-    suppress_callback_exceptions=True
+    suppress_callback_exceptions=True  # Unterdrückt Fehler bei dynamischen Callbacks
 )
+
+# Titel der Webseite (erscheint im Browser-Tab)
 app.title = "Stock Dashboard"
 
-# Custom CSS für News-Kacheln Hover-Effekte und Theme-Support
+# ================================================================================
+# CUSTOM CSS (Benutzerdefinierte Styles)
+# ================================================================================
+# app.index_string ermöglicht es uns, das gesamte HTML-Template der Seite anzupassen.
+# Hier fügen wir eigenes CSS hinzu für:
+# - News-Kacheln mit Hover-Effekten
+# - Light Mode / Dark Mode Unterstützung
+# - Benutzerdefinierte Tabellenformatierung
+# - Theme-Toggle-Button-Animation
+#
+# CSS (Cascading Style Sheets) bestimmt das Aussehen der HTML-Elemente.
+# Die Syntax ist: selector { eigenschaft: wert; }
+# ================================================================================
+
 app.index_string = '''
 <!DOCTYPE html>
 <html>
@@ -540,35 +1033,52 @@ app.index_string = '''
         {%favicon%}
         {%css%}
         <style>
-            /* News Card Styles */
+            /* =================================================
+               NEWS CARD STYLES - Styling für Nachrichtenkacheln
+               ================================================= */
+            
+            /* Hover-Effekt: Karte hebt sich an und bekommt Schatten */
             .news-card:hover {
-                transform: translateY(-5px);
-                box-shadow: 0 8px 25px rgba(0, 123, 255, 0.3) !important;
+                transform: translateY(-5px);  /* 5px nach oben verschieben */
+                box-shadow: 0 8px 25px rgba(0, 123, 255, 0.3) !important;  /* Blauer Schatten */
             }
+            
+            /* Mindesthhe für den News-Container */
             .news-grid-container {
-                min-height: 60vh;
+                min-height: 60vh;  /* 60% der Viewport-Höhe */
             }
+            
+            /* Hintergrund-Farbverlauf für News-Karten */
             .news-card .card-body {
                 background: linear-gradient(180deg, #2d3436 0%, #1e272e 100%);
             }
+            
+            /* Bilder in News-Karten etwas abdunkeln */
             .news-card img {
-                filter: brightness(0.9);
-                transition: filter 0.3s;
-            }
-            .news-card:hover img {
-                filter: brightness(1.1);
+                filter: brightness(0.9);  /* 90% Helligkeit */
+                transition: filter 0.3s;   /* Sanfte Animation */
             }
             
-            /* Light Mode Overrides */
+            /* Bei Hover: Bild aufhellen */
+            .news-card:hover img {
+                filter: brightness(1.1);  /* 110% Helligkeit */
+            }
+            
+            /* =================================================
+               LIGHT MODE OVERRIDES - Helles Design
+               ================================================= 
+               Diese Regeln werden aktiv, wenn die body-Klasse
+               "light-mode" gesetzt ist (durch JavaScript).
+            */
             body.light-mode {
-                background-color: #f8f9fa !important;
-                color: #212529 !important;
+                background-color: #f8f9fa !important;  /* Hellgrauer Hintergrund */
+                color: #212529 !important;              /* Dunkler Text */
             }
             body.light-mode .bg-dark {
-                background-color: #ffffff !important;
+                background-color: #ffffff !important;  /* Dunkle Elemente werden weiß */
             }
             body.light-mode .text-white {
-                color: #212529 !important;
+                color: #212529 !important;             /* Weißer Text wird dunkel */
             }
             body.light-mode .card {
                 background-color: #ffffff !important;
@@ -611,20 +1121,24 @@ app.index_string = '''
                 color: #6c757d !important;
             }
             
-            /* Portfolio Table Styles */
+            /* =================================================
+               PORTFOLIO TABLE STYLES - Tabellen-Formatierung
+               ================================================= */
             .portfolio-table th {
-                font-weight: 600;
+                font-weight: 600;  /* Fette Überschriften */
             }
             .portfolio-table td {
-                vertical-align: middle;
+                vertical-align: middle;  /* Vertikale Zentrierung */
             }
             
-            /* Theme Toggle Button */
+            /* =================================================
+               THEME TOGGLE BUTTON - Animation für Theme-Wechsel
+               ================================================= */
             .theme-toggle-btn {
-                transition: all 0.3s ease;
+                transition: all 0.3s ease;  /* Sanfte Animation bei allen Änderungen */
             }
             .theme-toggle-btn:hover {
-                transform: scale(1.1);
+                transform: scale(1.1);  /* Bei Hover: 10% vergrößern */
             }
         </style>
     </head>
@@ -639,139 +1153,241 @@ app.index_string = '''
 </html>
 '''
 
-# ============== Layout ==============
+# ================================================================================
+# LAYOUT - Die visuelle Struktur der Anwendung
+# ================================================================================
+# Das Layout definiert, was der Benutzer sieht und womit er interagieren kann.
+# Es besteht aus verschachtelten HTML- und Dash-Komponenten.
+#
+# Wichtige Konzepte:
+# - dbc.Container: Ein Bootstrap-Container, der die Seite strukturiert
+# - dbc.Row/dbc.Col: Zeilen und Spalten für das Grid-Layout
+# - html.Div: Ein HTML-Div-Element (Container für andere Elemente)
+# - dbc.Button: Ein klickbarer Button
+# - dcc.Input: Ein Eingabefeld
+# - dcc.Graph: Ein Plotly-Diagramm
+# - dbc.Modal: Ein Pop-up Fenster
+# - dcc.Store: Unsichtbarer Datenspeicher (für den Client-seitigen Zustand)
+# ================================================================================
+
 def create_market_ticker():
+    """
+    Erstellt die Marktübersicht-Leiste (Ticker-Bar) oben auf der Seite.
+    
+    Diese Leiste zeigt die wichtigsten Marktindizes und deren aktuelle Kurse an.
+    Jedes Element ist klickbar und öffnet ein Detail-Modal.
+    
+    Rückgabe: Eine dbc.Row mit den Ticker-Elementen
+    """
     return dbc.Row([
-        dbc.Col(html.Div(id=f"ticker-{s['name']}", className="text-center p-2", 
-                         style={"cursor": "pointer", "borderRadius": "5px", "background": "rgba(128, 128, 128, 0.2)"}), 
-                width="auto") 
-        for s in MARKET_OVERVIEW_SYMBOLS
-    ], className="g-2 p-2 mb-3", justify="center", style={"background": "rgba(128, 128, 128, 0.1)", "borderRadius": "8px"})
+        # Für jedes Symbol in der MARKET_OVERVIEW_SYMBOLS-Liste ein Element erstellen
+        # List Comprehension: Erstellt eine Liste von dbc.Col-Elementen
+        dbc.Col(
+            html.Div(
+                id=f"ticker-{s['name']}",  # Eindeutige ID für Callbacks
+                className="text-center p-2",  # Bootstrap-Klassen: zentriert, Padding
+                style={
+                    "cursor": "pointer",          # Mauszeiger zeigt an, dass klickbar
+                    "borderRadius": "5px",        # Abgerundete Ecken
+                    "background": "rgba(128, 128, 128, 0.2)"  # Halbtransparentes Grau
+                }
+            ), 
+            width="auto"  # Breite passt sich dem Inhalt an
+        ) 
+        for s in MARKET_OVERVIEW_SYMBOLS  # Durchlaufe alle Symbole
+    ], 
+    className="g-2 p-2 mb-3",  # g-2 = Gap/Abstand, p-2 = Padding, mb-3 = Margin Bottom
+    justify="center",  # Elemente zentrieren
+    style={"background": "rgba(128, 128, 128, 0.1)", "borderRadius": "8px"}  # Hintergrund
+    )
+
+
+# ================================================================================
+# HAUPT-LAYOUT DER ANWENDUNG
+# ================================================================================
+# app.layout definiert die gesamte Struktur der Web-Anwendung.
+# Hier werden alle UI-Elemente definiert und angeordnet.
+# ================================================================================
 
 app.layout = dbc.Container([
-    dcc.Interval(id="market-interval", interval=15000, n_intervals=0),
-    dcc.Store(id="selected-ticker", data=None),
-    dcc.Store(id="portfolio-store", data=load_portfolio()),
-    dcc.Store(id="search-results-store", data=[]),
-    dcc.Store(id="theme-store", data="dark"),  # Theme Store
+    # ===== INTERVALL-TIMER FÜR AUTOMATISCHE UPDATES =====
+    # Dieser Intervall-Timer löst alle 15 Sekunden ein Update aus
+    # n_intervals zählt hoch und kann als Input für Callbacks verwendet werden
+    dcc.Interval(id="market-interval", interval=15000, n_intervals=0),  # 15000ms = 15 Sekunden
     
-    # Header mit Theme Toggle
+    # ===== DATENSPEICHER (STORES) =====
+    # dcc.Store speichert Daten im Browser des Benutzers
+    # Diese Daten überleben Seitenaktualisierungen und können von Callbacks gelesen werden
+    dcc.Store(id="selected-ticker", data=None),           # Aktuell ausgewählte Aktie für Buy/Sell
+    dcc.Store(id="portfolio-store", data=load_portfolio()),  # Portfolio-Daten (geladen aus Datei)
+    dcc.Store(id="search-results-store", data=[]),        # Suchergebnisse
+    dcc.Store(id="theme-store", data="dark"),             # Aktuelles Theme (dark/light)
+    
+    # ===== HEADER MIT TITEL UND THEME-TOGGLE =====
     dbc.Row([
+        # Linke Spalte: Titel
         dbc.Col([
             html.H4("📈 Stock Dashboard", className="mb-0"),
         ], width=8),
+        
+        # Rechte Spalte: Theme-Wechsel-Buttons
         dbc.Col([
             dbc.ButtonGroup([
+                # Light Mode Button
                 dbc.Button(
-                    [html.I(className="fas fa-sun me-1"), "Light"],
+                    [html.I(className="fas fa-sun me-1"), "Light"],  # Sonnen-Icon + Text
                     id="btn-light-mode",
-                    color="warning",
-                    size="sm",
-                    outline=True,
+                    color="warning",   # Gelbe Farbe
+                    size="sm",         # Klein
+                    outline=True,      # Nur Umrandung, nicht gefüllt
                     className="theme-toggle-btn"
                 ),
+                # Dark Mode Button
                 dbc.Button(
-                    [html.I(className="fas fa-moon me-1"), "Dark"],
+                    [html.I(className="fas fa-moon me-1"), "Dark"],  # Mond-Icon + Text
                     id="btn-dark-mode",
-                    color="secondary",
+                    color="secondary",  # Graue Farbe
                     size="sm",
                     outline=True,
                     className="theme-toggle-btn"
                 ),
-            ], className="float-end")
+            ], className="float-end")  # Nach rechts ausrichten
         ], width=4, className="text-end"),
-    ], className="my-3 align-items-center"),
+    ], className="my-3 align-items-center"),  # my-3 = Margin Y (oben/unten)
     
-    # Dummy output für Theme-Toggle (JavaScript wird über clientside callback gesteuert)
+    # Unsichtbares Div für Theme-Toggle Output (wird von JavaScript gesteuert)
     html.Div(id="theme-output", style={"display": "none"}),
     
-    # Market Ticker Bar
+    # ===== MARKT-TICKER-LEISTE =====
     create_market_ticker(),
     
-    # Tabs
+    # ===== HAUPT-TABS =====
+    # Tabs sind wie Karteireiter - der Benutzer kann zwischen verschiedenen Ansichten wechseln
     dbc.Tabs([
-        # Portfolio Tab
+        # ================================================================
+        # TAB 1: PORTFOLIO - Zeigt alle gekauften Aktien und deren Wert
+        # ================================================================
         dbc.Tab(label="Portfolio", children=[
+            # Sub-Tabs innerhalb des Portfolio-Tabs
             dbc.Tabs([
-                # Übersicht Sub-Tab
+                # ----- ÜBERSICHT SUB-TAB -----
+                # Zeigt Tabelle mit allen Positionen, Zusammenfassung und Kreisdiagramm
                 dbc.Tab(label="Übersicht", children=[
                     dbc.Row([
                         dbc.Col([
+                            # Button-Gruppe für Portfolio-Aktionen
                             dbc.ButtonGroup([
+                                # Button zum Öffnen des Kauf/Verkauf-Modals
                                 dbc.Button("💰 Buy/Sell", id="btn-buy-sell", color="primary", size="sm"),
+                                # Button zum Öffnen der Transaktionshistorie
                                 dbc.Button("📋 Transactions", id="btn-transactions", color="success", size="sm"),
+                                # Button zum Öffnen des Kontostand-Modals
                                 dbc.Button("💵 Kontostand", id="btn-kontostand", color="info", size="sm"),
                             ], className="mb-3"),
                         ], width=12),
                     ]),
+                    # Platzhalter für die Portfolio-Tabelle (wird durch Callback gefüllt)
                     html.Div(id="portfolio-table"),
+                    # Platzhalter für die Zusammenfassung (Investiert, Wert, P/L)
                     html.Div(id="portfolio-summary", className="mt-3"),
+                    # Kreisdiagramm der Portfolio-Zusammensetzung
                     dbc.Row([
                         dbc.Col([dcc.Graph(id="portfolio-chart", style={"height": "400px"})], width=12),
                     ], className="mt-3"),
-                ], className="p-3"),
+                ], className="p-3"),  # p-3 = Padding
                 
-                # Wertentwicklung Sub-Tab
+                # ----- WERTENTWICKLUNG SUB-TAB -----
+                # Zeigt die zeitliche Entwicklung des Portfolio-Werts
                 dbc.Tab(label="Wertentwicklung", children=[
                     # Einzelne Aktien als Kacheln oben
                     html.H6("📊 Einzelne Positionen", className="mb-3"),
-                    html.Div(id="portfolio-stock-cards", className="mb-4"),
+                    html.Div(id="portfolio-stock-cards", className="mb-4"),  # Kacheln für jede Aktie
                     
-                    html.Hr(),
+                    html.Hr(),  # Horizontale Trennlinie
                     
                     # Gesamtportfolio unten
                     html.H6("📈 Gesamtportfolio-Entwicklung", className="mb-3"),
-                    html.Div(id="portfolio-total-summary", className="mb-3"),
+                    html.Div(id="portfolio-total-summary", className="mb-3"),  # Gesamtwert-Chart
                 ], className="p-3"),
             ]),
         ], className="p-3"),
         
-        # Aktien Tab
+        # ================================================================
+        # TAB 2: AKTIEN - Aktiensuche, Kurs-Charts und News
+        # ================================================================
+        # Hier kann der Benutzer nach Aktien suchen, deren Kursverlauf
+        # anzeigen und aktuelle Nachrichten lesen.
         dbc.Tab(label="Aktien", children=[
             dbc.Row([
+                # Linke Spalte: Suchfeld
                 dbc.Col([
-                    dbc.Input(id="stock-search", placeholder="Aktie suchen (z.B. Apple, TSLA)...", type="text", debounce=True),
+                    # Eingabefeld für die Aktiensuche
+                    # debounce=True: Wartet bis der Benutzer aufhört zu tippen
+                    dbc.Input(
+                        id="stock-search", 
+                        placeholder="Aktie suchen (z.B. Apple, TSLA)...",  # Platzhalter-Text
+                        type="text", 
+                        debounce=True  # Verzögert Callback bis Eingabe beendet
+                    ),
                 ], width=6),
+                
+                # Rechte Spalte: Zeitraum-Buttons
                 dbc.Col([
+                    # Button-Gruppe für verschiedene Zeiträume
                     dbc.ButtonGroup([
-                        dbc.Button("1T", id="btn-1d", size="sm", outline=True, color="primary"),
-                        dbc.Button("1W", id="btn-1w", size="sm", outline=True, color="primary"),
-                        dbc.Button("1M", id="btn-1m", size="sm", outline=True, color="primary", active=True),
-                        dbc.Button("3M", id="btn-3m", size="sm", outline=True, color="primary"),
-                        dbc.Button("1J", id="btn-1y", size="sm", outline=True, color="primary"),
-                        dbc.Button("Max", id="btn-max", size="sm", outline=True, color="primary"),
+                        dbc.Button("1T", id="btn-1d", size="sm", outline=True, color="primary"),   # 1 Tag
+                        dbc.Button("1W", id="btn-1w", size="sm", outline=True, color="primary"),   # 1 Woche
+                        dbc.Button("1M", id="btn-1m", size="sm", outline=True, color="primary", active=True),  # 1 Monat (Standard)
+                        dbc.Button("3M", id="btn-3m", size="sm", outline=True, color="primary"),   # 3 Monate
+                        dbc.Button("1J", id="btn-1y", size="sm", outline=True, color="primary"),   # 1 Jahr
+                        dbc.Button("Max", id="btn-max", size="sm", outline=True, color="primary"), # Maximum
                     ]),
                 ], width=6),
             ], className="mb-3"),
+            
+            # Untere Zeile: Chart und News nebeneinander
             dbc.Row([
+                # Linke Spalte: Kurs-Chart (8 von 12 Spalten breit)
                 dbc.Col([dcc.Graph(id="stock-chart", style={"height": "400px"})], width=8),
+                
+                # Rechte Spalte: News-Liste (4 von 12 Spalten breit)
                 dbc.Col([
                     html.H6("📰 News"),
+                    # Scrollbarer Container für News
                     html.Div(id="stock-news", style={"maxHeight": "380px", "overflowY": "auto"})
                 ], width=4),
             ]),
         ], className="p-3"),
         
-        # News Tab
+        # ================================================================
+        # TAB 3: NEWS - Aktuelle Finanznachrichten
+        # ================================================================
+        # Zeigt Nachrichten aus verschiedenen Kategorien (Aktien, Krypto, Wirtschaft)
+        # in einem schönen Kachel-Layout mit Bildern.
         dbc.Tab(label="📰 News", children=[
             html.Div([
-                # Header mit Suchfeld und Aktualisieren-Button
+                # ----- HEADER MIT SUCHE UND AKTUALISIEREN-BUTTON -----
                 dbc.Row([
+                    # Überschrift und Untertext
                     dbc.Col([
                         html.H4("📰 Finanznachrichten", className="mb-0 text-white"),
                         html.Small("Aktuelle Nachrichten aus der Finanzwelt", className="text-muted")
-                    ], width=12, lg=4),
+                    ], width=12, lg=4),  # lg=4 bedeutet: auf großen Bildschirmen 4 Spalten
+                    
+                    # Suchfeld für Nachrichten
                     dbc.Col([
                         dbc.InputGroup([
-                            dbc.InputGroupText("🔍"),
+                            dbc.InputGroupText("🔍"),  # Lupe-Icon
                             dbc.Input(
                                 id="news-search-input",
                                 placeholder="Suche nach Aktien, Themen...",
                                 type="text",
-                                debounce=True
+                                debounce=True  # Wartet bis Eingabe beendet
                             ),
                         ], size="sm")
-                    ], width=12, lg=5, className="mt-2 mt-lg-0"),
+                    ], width=12, lg=5, className="mt-2 mt-lg-0"),  # mt-lg-0: kein Margin-Top auf großen Screens
+                    
+                    # Aktualisieren-Button
                     dbc.Col([
                         dbc.ButtonGroup([
                             dbc.Button("🔄 Aktualisieren", id="btn-refresh-news", color="primary", size="sm"),
@@ -779,23 +1395,25 @@ app.layout = dbc.Container([
                     ], width=12, lg=3, className="mt-2 mt-lg-0 text-end"),
                 ], className="mb-4 align-items-center"),
                 
-                # Kategorie-Tabs
+                # ----- KATEGORIE-TABS -----
+                # Unter-Tabs zum Filtern nach Kategorie
                 dbc.Tabs([
-                    dbc.Tab(label="🌍 Alle", tab_id="news-all"),
-                    dbc.Tab(label="📈 Aktien", tab_id="news-stocks"),
-                    dbc.Tab(label="₿ Krypto", tab_id="news-crypto"),
-                    dbc.Tab(label="🏦 Wirtschaft", tab_id="news-economy"),
+                    dbc.Tab(label="🌍 Alle", tab_id="news-all"),       # Alle Nachrichten
+                    dbc.Tab(label="📈 Aktien", tab_id="news-stocks"),  # Nur Aktien-News
+                    dbc.Tab(label="₿ Krypto", tab_id="news-crypto"),    # Nur Krypto-News
+                    dbc.Tab(label="🏦 Wirtschaft", tab_id="news-economy"),  # Wirtschaftsnews
                 ], id="news-category-tabs", active_tab="news-all", className="mb-4"),
                 
-                # News-Kacheln Container
+                # ----- NEWS-KACHELN CONTAINER -----
+                # dbc.Spinner zeigt einen Ladekreis während die News geladen werden
                 dbc.Spinner(
                     html.Div(id="market-news", className="news-grid-container"),
                     color="primary",
                     type="border",
-                    size="lg"
+                    size="lg"  # Großer Spinner
                 ),
-            ], style={"minHeight": "80vh"})
-        ], className="p-3 bg-dark"),
+            ], style={"minHeight": "80vh"})  # Mindestens 80% der Bildschirmhöhe
+        ], className="p-3 bg-dark"),  # bg-dark = dunkler Hintergrund
         
         # AI Analysis Tab
         dbc.Tab(label="AI Analysis", children=[
@@ -1199,35 +1817,97 @@ app.layout = dbc.Container([
     # Hidden Store für aktuellen Ticker im Modal
     dcc.Store(id="current-ticker-symbol", data=None),
     
-], fluid=True)
+], fluid=True)  # fluid=True = Container nimmt volle Breite ein
 
-# ============== Callbacks ==============
 
-# Market Ticker Update
+# ================================================================================
+# CALLBACKS - Die Interaktionslogik der Anwendung
+# ================================================================================
+# Callbacks sind das Herzstück von Dash-Anwendungen. Sie verbinden Benutzeraktionen
+# (wie Klicks oder Texteingaben) mit Reaktionen der App (wie Aktualisieren von
+# Diagrammen oder Texten).
+#
+# WICHTIGE KONZEPTE:
+# ------------------
+# 1. @callback Dekorator: Markiert eine Funktion als Callback
+#
+# 2. Output("element-id", "eigenschaft"): Was soll aktualisiert werden?
+#    - "element-id": Die ID des HTML-Elements (z.B. "stock-chart")
+#    - "eigenschaft": Was am Element geändert wird (z.B. "figure", "children")
+#
+# 3. Input("element-id", "eigenschaft"): Was löst den Callback aus?
+#    - Wenn sich diese Eigenschaft ändert, wird der Callback ausgeführt
+#
+# 4. State("element-id", "eigenschaft"): Zusätzliche Daten lesen
+#    - Wie Input, aber löst den Callback NICHT aus
+#    - Nützlich um zusätzliche Werte zu lesen
+#
+# 5. prevent_initial_call=True: Callback wird nicht beim Laden der Seite ausgeführt
+#
+# 6. ctx.triggered_id: Welches Element hat den Callback ausgelöst?
+#
+# Beispiel:
+# @callback(
+#     Output("mein-text", "children"),    # Aktualisiert den Inhalt von "mein-text"
+#     Input("mein-button", "n_clicks")    # Wird ausgeführt wenn Button geklickt wird
+# )
+# def meine_funktion(n_clicks):
+#     return f"Button wurde {n_clicks} mal geklickt"
+# ================================================================================
+
+
+# ================================================================================
+# CALLBACK: MARKT-TICKER AKTUALISIEREN
+# ================================================================================
+# Dieser Callback aktualisiert die Kurse in der oberen Ticker-Leiste.
+# Er wird alle 15 Sekunden automatisch durch den Interval-Timer ausgelöst.
 @callback(
+    # OUTPUTS: Aktualisiere Text UND Style für jedes Ticker-Element
+    # List Comprehension erstellt eine Liste von Outputs für alle Symbole
     [Output(f"ticker-{s['name']}", "children") for s in MARKET_OVERVIEW_SYMBOLS] +
     [Output(f"ticker-{s['name']}", "style") for s in MARKET_OVERVIEW_SYMBOLS],
+    
+    # INPUT: Der Interval-Timer (aktualisiert sich alle 15 Sekunden)
     Input("market-interval", "n_intervals")
 )
 def update_market_tickers(n):
-    texts = []
-    styles = []
+    """
+    Aktualisiert alle Kurse in der Marktübersicht-Leiste.
+    
+    Parameter:
+    - n: Anzahl der vergangenen Intervalle (wird nicht direkt verwendet,
+         löst aber den Callback aus)
+    
+    Rückgabe: Liste von HTML-Elementen (Texte) + Liste von Style-Dictionaries
+    """
+    texts = []   # Liste für die anzuzeigenden Texte
+    styles = []  # Liste für die Styling-Informationen
+    
+    # Durchlaufe alle Symbole aus der Konfiguration
     for s in MARKET_OVERVIEW_SYMBOLS:
+        # Hole aktuellen Preis und Vortagesschluss
         price, prev = fetch_price(s["symbol"])
+        
+        # Spezialfall EUR/USD: Invertieren (weil Yahoo USD/EUR liefert)
         if s.get("invert") and price:
             price = 1 / price
             if prev:
                 prev = 1 / prev
         
+        # Wenn kein Preis verfügbar: "n/a" anzeigen
         if price is None:
             texts.append(html.Span([html.B(s["name"]), ": n/a"]))
             styles.append({"cursor": "pointer", "borderRadius": "5px", "background": "#f8f9fa", "padding": "8px"})
         else:
+            # Formatiere den Preis mit der konfigurierten Anzahl Nachkommastellen
             decimals = s.get("decimals", 2)
+            # Deutsche Zahlenformatierung: 1.234,56 statt 1,234.56
             formatted = f"{price:,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
             
+            # Farbe basierend auf Änderung zum Vortag
             if prev:
                 diff = price - prev
+                # Grün wenn gestiegen, Rot wenn gefallen, Schwarz wenn gleich
                 color = "#22c55e" if diff > 0.0001 else "#ef4444" if diff < -0.0001 else "#000000"
             else:
                 color = "#000000"
@@ -1235,50 +1915,82 @@ def update_market_tickers(n):
             texts.append(html.Span([html.B(s["name"]), f": {formatted}"], style={"color": color, "fontWeight": "bold"}))
             styles.append({"cursor": "pointer", "borderRadius": "5px", "background": "#f8f9fa", "padding": "8px"})
     
+    # Rückgabe: Erst alle Texte, dann alle Styles (entspricht der Output-Reihenfolge)
     return texts + styles
 
-# Stock Search & Chart
+# ================================================================================
+# CALLBACK: AKTIENSUCHE UND CHART-AKTUALISIERUNG
+# ================================================================================
+# Dieser Callback reagiert auf:
+# 1. Texteingabe im Suchfeld
+# 2. Klicks auf die Zeitraum-Buttons (1T, 1W, 1M, etc.)
 @callback(
-    Output("stock-chart", "figure"),
-    Output("stock-news", "children"),
-    Input("stock-search", "value"),
-    Input("btn-1d", "n_clicks"),
-    Input("btn-1w", "n_clicks"),
-    Input("btn-1m", "n_clicks"),
-    Input("btn-3m", "n_clicks"),
-    Input("btn-1y", "n_clicks"),
-    Input("btn-max", "n_clicks"),
-    prevent_initial_call=True
+    Output("stock-chart", "figure"),   # Aktualisiert das Diagramm
+    Output("stock-news", "children"),   # Aktualisiert die News-Liste
+    Input("stock-search", "value"),     # Suchfeld-Eingabe
+    Input("btn-1d", "n_clicks"),        # 1-Tag Button
+    Input("btn-1w", "n_clicks"),        # 1-Woche Button
+    Input("btn-1m", "n_clicks"),        # 1-Monat Button
+    Input("btn-3m", "n_clicks"),        # 3-Monate Button
+    Input("btn-1y", "n_clicks"),        # 1-Jahr Button
+    Input("btn-max", "n_clicks"),       # Maximum Button
+    prevent_initial_call=True            # Nicht beim Laden ausführen
 )
 def update_stock_view(search, n1d, n1w, n1m, n3m, n1y, nmax):
+    """
+    Aktualisiert den Aktienchart und die News basierend auf der Suche
+    und dem gewählten Zeitraum.
+    
+    Parameter:
+    - search: Der Suchbegriff aus dem Eingabefeld
+    - n1d bis nmax: Klick-Zähler der Zeitraum-Buttons (Werte werden nicht direkt
+                    verwendet, aber der Klick löst den Callback aus)
+    
+    Rückgabe: (chart_figure, news_elements)
+    """
+    # Finde heraus, welches Element den Callback ausgelöst hat
     triggered = ctx.triggered_id
     
+    # Mapping: Button-ID -> (Periode, Interval)
+    # Periode = wie weit zurück, Interval = Abstand zwischen Datenpunkten
     period_map = {
-        "btn-1d": ("1d", "5m"),
-        "btn-1w": ("5d", "15m"),
-        "btn-1m": ("1mo", "1d"),
-        "btn-3m": ("3mo", "1d"),
-        "btn-1y": ("1y", "1wk"),
-        "btn-max": ("max", "1mo"),
+        "btn-1d": ("1d", "5m"),      # 1 Tag, alle 5 Minuten
+        "btn-1w": ("5d", "15m"),     # 5 Tage, alle 15 Minuten
+        "btn-1m": ("1mo", "1d"),     # 1 Monat, täglich
+        "btn-3m": ("3mo", "1d"),     # 3 Monate, täglich
+        "btn-1y": ("1y", "1wk"),     # 1 Jahr, wöchentlich
+        "btn-max": ("max", "1mo"),   # Maximum, monatlich
     }
     
+    # Hole Periode und Interval basierend auf geklicktem Button
+    # Falls keiner geklickt: Standard ist 1 Monat
     period, interval = period_map.get(triggered, ("1mo", "1d"))
     
+    # Prüfe ob Suchbegriff lang genug ist
     if not search or len(search) < 2:
         return go.Figure(), html.P("Bitte Aktie suchen...")
     
+    # Suche nach passenden Aktien
     results = search_stocks(search)
     if not results:
         return go.Figure(), html.P("Keine Ergebnisse")
     
+    # Nimm das erste Suchergebnis
     symbol = results[0]["symbol"]
+    
+    # Erstelle den Chart für diese Aktie
     fig = create_stock_chart(symbol, period, interval)
     
+    # Hole News zur Aktie (maximal 10)
     news = fetch_google_news(symbol, 10)
+    
+    # Erstelle News-Karten oder zeige "Keine News"
     news_items = [
         dbc.Card([
             dbc.CardBody([
+                # Klickbarer Link zur News
                 html.A(n["title"], href=n["link"], target="_blank", className="text-decoration-none"),
+                # Quelle der News
                 html.Small(f" — {n['source']}", className="text-muted d-block")
             ], className="p-2")
         ], className="mb-2") for n in news
@@ -1286,18 +1998,32 @@ def update_stock_view(search, n1d, n1w, n1m, n3m, n1y, nmax):
     
     return fig, news_items
 
-# Portfolio Display
+# ================================================================================
+# CALLBACK: PORTFOLIO ANZEIGE AKTUALISIEREN
+# ================================================================================
+# Dieser Callback aktualisiert die gesamte Portfolio-Übersicht wenn sich die
+# Daten im portfolio-store ändern (z.B. nach Kauf/Verkauf).
 @callback(
-    Output("portfolio-table", "children"),
-    Output("portfolio-summary", "children"),
-    Output("portfolio-chart", "figure"),
-    Output("portfolio-stock-cards", "children"),
-    Output("portfolio-total-summary", "children"),
-    Input("portfolio-store", "data")
+    Output("portfolio-table", "children"),      # Die Portfolio-Tabelle
+    Output("portfolio-summary", "children"),    # Die Zusammenfassung (Investiert/Wert/P&L)
+    Output("portfolio-chart", "figure"),        # Das Kreisdiagramm
+    Output("portfolio-stock-cards", "children"), # Die einzelnen Aktien-Kacheln
+    Output("portfolio-total-summary", "children"), # Gesamtportfolio-Zusammenfassung
+    Input("portfolio-store", "data")            # Wird ausgelöst wenn sich Store ändert
 )
 def update_portfolio(portfolio):
-    # Leere Figur für Fehlerfälle
+    """
+    Aktualisiert alle Portfolio-Ansichten: Tabelle, Zusammenfassung, Charts.
+    
+    Parameter:
+    - portfolio: Liste der Portfolio-Positionen aus dem Store
+    
+    Rückgabe: (tabelle, zusammenfassung, kreisdiagramm, aktienkacheln, gesamtsummary)
+    """
+    
+    # Hilfsfunktion für leere/Fehler-Charts
     def empty_figure(text="Portfolio ist leer"):
+        """Erstellt ein leeres Diagramm mit einer Nachricht."""
         fig = go.Figure()
         fig.add_annotation(text=text, x=0.5, y=0.5, showarrow=False, font=dict(size=16, color="white"))
         fig.update_layout(
@@ -1721,105 +2447,196 @@ def update_market_news(n, category, search_term):
     
     return dbc.Row(news_cards, className="g-3")
 
-# Buy/Sell Modal Toggle
+
+# ================================================================================
+# CALLBACK: BUY/SELL MODAL ÖFFNEN/SCHLIESSEN
+# ================================================================================
+# Modals sind Pop-up-Fenster, die über der Seite erscheinen.
+# Dieser Callback steuert, ob das Kauf/Verkauf-Modal sichtbar ist.
 @callback(
-    Output("buy-sell-modal", "is_open"),
-    Input("btn-buy-sell", "n_clicks"),
-    Input("btn-close-modal", "n_clicks"),
-    Input("btn-confirm-buy", "n_clicks"),
-    Input("btn-confirm-sell", "n_clicks"),
-    State("buy-sell-modal", "is_open"),
+    Output("buy-sell-modal", "is_open"),    # Steuert ob Modal offen ist (True/False)
+    Input("btn-buy-sell", "n_clicks"),       # "Buy/Sell" Button im Portfolio
+    Input("btn-close-modal", "n_clicks"),    # "Schließen" Button im Modal
+    Input("btn-confirm-buy", "n_clicks"),    # "Kaufen" Button (schließt auch)
+    Input("btn-confirm-sell", "n_clicks"),   # "Verkaufen" Button (schließt auch)
+    State("buy-sell-modal", "is_open"),      # Aktueller Zustand des Modals
     prevent_initial_call=True
 )
 def toggle_buy_sell_modal(n1, n2, n3, n4, is_open):
-    return not is_open
+    """
+    Wechselt den Zustand des Buy/Sell-Modals (offen <-> geschlossen).
+    
+    Parameter:
+    - n1-n4: Klick-Zähler der verschiedenen Buttons
+    - is_open: Aktueller Zustand (True = offen, False = geschlossen)
+    
+    Rückgabe: Der neue Zustand (invertiert)
+    """
+    return not is_open  # Einfach umschalten: offen -> zu, zu -> offen
 
-# Kontostand Modal Toggle
+
+# ================================================================================
+# CALLBACK: KONTOSTAND MODAL ÖFFNEN/SCHLIESSEN
+# ================================================================================
 @callback(
     Output("kontostand-modal", "is_open"),
-    Input("btn-kontostand", "n_clicks"),
-    Input("btn-close-kontostand", "n_clicks"),
+    Input("btn-kontostand", "n_clicks"),     # "Kontostand" Button
+    Input("btn-close-kontostand", "n_clicks"), # "Schließen" Button
     State("kontostand-modal", "is_open"),
     prevent_initial_call=True
 )
 def toggle_kontostand_modal(n1, n2, is_open):
+    """Wechselt den Zustand des Kontostand-Modals."""
     return not is_open
 
-# Kontostand Display und Einzahlung/Auszahlung (kombiniert)
+
+# ================================================================================
+# CALLBACK: KONTOSTAND ANZEIGEN UND EIN-/AUSZAHLUNG VERARBEITEN
+# ================================================================================
+# Dieser Callback hat mehrere Funktionen:
+# 1. Kontostand anzeigen wenn Modal geöffnet wird
+# 2. Einzahlung verarbeiten
+# 3. Auszahlung verarbeiten
 @callback(
-    Output("kontostand-display", "children"),
-    Output("balance-message", "children"),
-    Input("kontostand-modal", "is_open"),
-    Input("btn-deposit", "n_clicks"),
-    Input("btn-withdraw", "n_clicks"),
-    State("balance-amount", "value"),
+    Output("kontostand-display", "children"),  # Anzeige des aktuellen Kontostands
+    Output("balance-message", "children"),      # Erfolgs-/Fehlermeldung
+    Input("kontostand-modal", "is_open"),       # Modal wurde geöffnet/geschlossen
+    Input("btn-deposit", "n_clicks"),           # Einzahlung-Button
+    Input("btn-withdraw", "n_clicks"),          # Auszahlung-Button
+    State("balance-amount", "value"),           # Eingegebener Betrag
     prevent_initial_call=True
 )
 def handle_kontostand(is_open, btn_deposit, btn_withdraw, amount):
+    """
+    Verarbeitet Kontostand-Anzeige und Ein-/Auszahlungen.
+    
+    Parameter:
+    - is_open: Ob das Modal gerade geöffnet wurde
+    - btn_deposit: Klick-Zähler Einzahlung-Button
+    - btn_withdraw: Klick-Zähler Auszahlung-Button
+    - amount: Der eingegebene Betrag
+    
+    Rückgabe: (kontostand_anzeige, nachricht)
+    """
+    # Finde heraus, welches Element den Callback ausgelöst hat
     triggered = ctx.triggered_id
+    
+    # Lade aktuellen Kontostand aus Datei
     balance = load_balance()
     
-    # Modal wurde geöffnet - nur Anzeige aktualisieren
+    # ===== Fall 1: Modal wurde geöffnet =====
     if triggered == "kontostand-modal":
         if is_open:
+            # Zeige aktuellen Kontostand
             return dbc.Alert(f"Aktueller Kontostand: {balance:,.2f} USD", color="success"), ""
         return "", ""
     
-    # Einzahlung
+    # ===== Fall 2: Einzahlung =====
     if triggered == "btn-deposit":
+        # Validierung: Betrag muss positiv sein
         if not amount or amount <= 0:
             return dbc.Alert(f"Aktueller Kontostand: {balance:,.2f} USD", color="success"), dbc.Alert("Ungültiger Betrag", color="danger")
+        
+        # Betrag zum Kontostand addieren
         balance += float(amount)
         save_balance(balance)
         return dbc.Alert(f"Aktueller Kontostand: {balance:,.2f} USD", color="success"), dbc.Alert(f"Einzahlung von {amount:,.2f} USD erfolgreich!", color="success")
     
-    # Auszahlung
+    # ===== Fall 3: Auszahlung =====
     if triggered == "btn-withdraw":
+        # Validierung: Betrag muss positiv sein
         if not amount or amount <= 0:
             return dbc.Alert(f"Aktueller Kontostand: {balance:,.2f} USD", color="success"), dbc.Alert("Ungültiger Betrag", color="danger")
+        
+        # Validierung: Genügend Guthaben vorhanden?
         if balance < float(amount):
             return dbc.Alert(f"Aktueller Kontostand: {balance:,.2f} USD", color="success"), dbc.Alert("Nicht genügend Guthaben", color="danger")
+        
+        # Betrag vom Kontostand abziehen
         balance -= float(amount)
         save_balance(balance)
         return dbc.Alert(f"Aktueller Kontostand: {balance:,.2f} USD", color="success"), dbc.Alert(f"Auszahlung von {amount:,.2f} USD erfolgreich!", color="success")
     
+    # Wenn keiner der Fälle zutrifft: Nichts tun
     raise dash.exceptions.PreventUpdate
 
-# Buy Search
+# ================================================================================
+# CALLBACK: AKTIENSUCHE IM BUY/SELL MODAL
+# ================================================================================
+# Sucht nach Aktien basierend auf der Eingabe im Modal und zeigt Ergebnisse.
 @callback(
-    Output("buy-search-results", "children"),
-    Output("search-results-store", "data"),
-    Input("buy-search", "value"),
+    Output("buy-search-results", "children"),  # Liste der Suchergebnis-Buttons
+    Output("search-results-store", "data"),    # Speichert Ergebnisse für spätere Verwendung
+    Input("buy-search", "value"),              # Suchfeld im Modal
     prevent_initial_call=True
 )
 def search_for_buy(query):
+    """
+    Sucht nach Aktien für den Kauf und erstellt klickbare Buttons.
+    
+    Parameter:
+    - query: Der Suchbegriff aus dem Eingabefeld
+    
+    Rückgabe: (buttons_liste, suchergebnisse_daten)
+    """
+    # Mindestens 2 Zeichen für Suche erforderlich
     if not query or len(query) < 2:
         return [], []
+    
+    # Suche durchführen
     results = search_stocks(query)
+    
+    # Erstelle Buttons für jedes Ergebnis (maximal 5)
+    # Das Pattern {"type": "search-result", "index": i} ermöglicht Pattern Matching Callbacks
     buttons = [
-        dbc.Button(f"{r['symbol']} - {r['name']}", id={"type": "search-result", "index": i}, 
-                   color="light", className="w-100 mb-1 text-start", size="sm")
-        for i, r in enumerate(results[:5])
+        dbc.Button(
+            f"{r['symbol']} - {r['name']}",  # Button-Text
+            id={"type": "search-result", "index": i},  # Dynamische ID
+            color="light", 
+            className="w-100 mb-1 text-start",  # Volle Breite, kleiner Abstand
+            size="sm"
+        )
+        for i, r in enumerate(results[:5])  # Nur erste 5 Ergebnisse
     ]
-    return buttons, results[:5]
+    
+    return buttons, results[:5]  # Rückgabe: Buttons und Daten
 
 
 # (Balance displayed/updated by calculate_total)
 
-# Select Stock for Buy
+
+# ================================================================================
+# CALLBACK: AKTIE FÜR KAUF/VERKAUF AUSWÄHLEN
+# ================================================================================
+# Wird ausgelöst wenn der Benutzer auf einen Suchergebnis-Button klickt.
+# Verwendet Pattern Matching: Input({"type": "search-result", "index": dash.ALL}, ...)
+# Das ALL bedeutet: Reagiere auf ALLE Elemente dieses Typs
 @callback(
-    Output("buy-stock-info", "children"),
-    Output("buy-chart-container", "children"),
-    Output("selected-ticker", "data"),
-    Input({"type": "search-result", "index": dash.ALL}, "n_clicks"),
-    State("search-results-store", "data"),
+    Output("buy-stock-info", "children"),    # Aktien-Info Anzeige
+    Output("buy-chart-container", "children"), # Mini-Chart im Modal
+    Output("selected-ticker", "data"),       # Speichert ausgewählte Aktie
+    Input({"type": "search-result", "index": dash.ALL}, "n_clicks"),  # Pattern Match auf alle Buttons
+    State("search-results-store", "data"),   # Gespeicherte Suchergebnisse
     prevent_initial_call=True
 )
 def select_stock_for_buy(clicks, results):
+    """
+    Zeigt Details zur ausgewählten Aktie an wenn ein Suchergebnis geklickt wird.
+    
+    Parameter:
+    - clicks: Liste aller Klick-Zähler (einer pro Suchergebnis-Button)
+    - results: Die gespeicherten Suchergebnisse
+    
+    Rückgabe: (aktien_info, chart, ticker_daten)
+    """
+    # Prüfe ob überhaupt geklickt wurde
     if not any(clicks) or not results:
         return "", "", None
     
+    # Finde den Index des geklickten Buttons
+    # next() findet das erste Element, das die Bedingung erfüllt
     idx = next((i for i, c in enumerate(clicks) if c), 0)
+    
     if idx >= len(results):
         return "", "", None
     
@@ -1873,44 +2690,73 @@ def calculate_total(qty, ticker, portfolio):
     balance_html = html.Span(f"Kontostand: {balance:,.2f} USD")
     return total_html, balance_html, disabled
 
-# Confirm Buy
+
+# ================================================================================
+# CALLBACK: KAUF BESTÄTIGEN
+# ================================================================================
+# Dieser Callback wird ausgeführt wenn der "Kaufen" Button geklickt wird.
+# Er fügt die Aktie zum Portfolio hinzu und zieht den Betrag vom Kontostand ab.
 @callback(
-    Output("portfolio-store", "data", allow_duplicate=True),
-    Input("btn-confirm-buy", "n_clicks"),
-    State("selected-ticker", "data"),
-    State("buy-qty", "value"),
-    State("portfolio-store", "data"),
+    Output("portfolio-store", "data", allow_duplicate=True),  # allow_duplicate weil mehrere Callbacks diesen Output haben
+    Input("btn-confirm-buy", "n_clicks"),     # Kaufen-Button wurde geklickt
+    State("selected-ticker", "data"),         # Die ausgewählte Aktie
+    State("buy-qty", "value"),                # Die eingegebene Menge
+    State("portfolio-store", "data"),         # Aktuelles Portfolio
     prevent_initial_call=True
 )
 def confirm_buy(n, ticker, qty, portfolio):
+    """
+    Führt den Kauf einer Aktie durch.
+    
+    Schritte:
+    1. Validierung der Eingaben
+    2. Prüfen ob genügend Geld vorhanden ist
+    3. Portfolio aktualisieren (neue Position oder vorhandene erweitern)
+    4. Transaktion speichern
+    5. Kontostand aktualisieren
+    
+    Parameter:
+    - n: Klick-Zähler des Buttons
+    - ticker: Daten der ausgewählten Aktie {symbol, name, price}
+    - qty: Gewünschte Kaufmenge
+    - portfolio: Aktuelles Portfolio
+    
+    Rückgabe: Das aktualisierte Portfolio
+    """
+    # Validierung: Alle erforderlichen Daten vorhanden?
     if not n or not ticker or not qty or not ticker.get("price"):
         return portfolio or []
 
-    # Safety: prevent buying more than current balance
+    # Sicherheitsprüfung: Genug Geld vorhanden?
     balance = load_balance()
     total_cost = int(qty) * float(ticker.get("price", 0))
 
     if total_cost > balance:
-        # Not enough funds: do not modify portfolio
+        # Nicht genug Geld: Kauf abbrechen, Portfolio unverändert zurückgeben
         return portfolio or []
     
-    portfolio = portfolio or []
+    portfolio = portfolio or []  # Falls None, leere Liste verwenden
     
-    # Prüfen ob schon vorhanden
+    # ===== Portfolio aktualisieren =====
+    # Prüfen ob diese Aktie schon im Portfolio ist
     found = False
     for item in portfolio:
         if item["symbol"] == ticker["symbol"]:
-            # Gewichteter Durchschnitt berechnen
+            # Aktie bereits vorhanden: Durchschnittlichen Kaufpreis berechnen
+            # Formel: (alter_preis * alte_menge + neuer_preis * neue_menge) / gesamtmenge
             old_qty = item["qty"]
             old_price = item.get("buy_price") or item.get("avg_price", 0)
             new_qty = old_qty + int(qty)
             new_price = ((old_price * old_qty) + (ticker["price"] * int(qty))) / new_qty
+            
+            # Werte aktualisieren
             item["qty"] = new_qty
             item["buy_price"] = new_price
             item["avg_price"] = new_price
             found = True
             break
     
+    # Wenn Aktie noch nicht im Portfolio: Neue Position hinzufügen
     if not found:
         portfolio.append({
             "symbol": ticker["symbol"],
@@ -1919,38 +2765,64 @@ def confirm_buy(n, ticker, qty, portfolio):
             "avg_price": ticker["price"]
         })
     
+    # Portfolio in Datei speichern
     save_portfolio(portfolio)
     
+    # Transaktion in Historie speichern
     save_transaction({
-        "timestamp": datetime.now().isoformat(),
-        "type": "buy",
+        "timestamp": datetime.now().isoformat(),  # Aktuelles Datum/Zeit im ISO-Format
+        "type": "buy",                            # Transaktionstyp
         "symbol": ticker["symbol"],
         "qty": int(qty),
         "price": ticker["price"]
     })
     
-    # Kontostand anpassen: Betrag abziehen
+    # ===== Kontostand aktualisieren =====
+    # Kaufpreis vom Kontostand abziehen
     try:
         current_balance = load_balance()
         cost = int(qty) * float(ticker.get("price", 0))
         current_balance -= cost
         save_balance(current_balance)
     except Exception:
-        # Falls Balance-Funktionen fehlen oder fehlschlagen, nichts weiter tun
+        # Bei Fehlern: Nichts weiter tun (Portfolio wurde trotzdem aktualisiert)
         pass
 
     return portfolio
 
-# Confirm Sell
+# ================================================================================
+# CALLBACK: VERKAUF BESTÄTIGEN
+# ================================================================================
+# Dieser Callback wird ausgeführt wenn der "Verkaufen" Button geklickt wird.
+# Er entfernt Aktien aus dem Portfolio und fügt den Erlös zum Kontostand hinzu.
 @callback(
     Output("portfolio-store", "data", allow_duplicate=True),
-    Input("btn-confirm-sell", "n_clicks"),
-    State("selected-ticker", "data"),
-    State("buy-qty", "value"),
-    State("portfolio-store", "data"),
+    Input("btn-confirm-sell", "n_clicks"),    # Verkaufen-Button
+    State("selected-ticker", "data"),         # Ausgewählte Aktie
+    State("buy-qty", "value"),                # Zu verkaufende Menge
+    State("portfolio-store", "data"),         # Aktuelles Portfolio
     prevent_initial_call=True
 )
 def confirm_sell(n, ticker, qty, portfolio):
+    """
+    Führt den Verkauf einer Aktie durch.
+    
+    Schritte:
+    1. Validierung der Eingaben
+    2. Position im Portfolio finden und reduzieren
+    3. Bei Menge 0: Position komplett entfernen
+    4. Transaktion speichern
+    5. Erlös zum Kontostand addieren
+    
+    Parameter:
+    - n: Klick-Zähler
+    - ticker: Ausgewählte Aktie
+    - qty: Zu verkaufende Menge
+    - portfolio: Aktuelles Portfolio
+    
+    Rückgabe: Das aktualisierte Portfolio
+    """
+    # Validierung
     if not n or not ticker or not qty:
         return portfolio or []
     
@@ -1958,29 +2830,35 @@ def confirm_sell(n, ticker, qty, portfolio):
     qty = int(qty)
     portfolio = portfolio or []
     
-    # Finde Position im Portfolio
+    # ===== Position im Portfolio finden und aktualisieren =====
     for item in portfolio:
         if item["symbol"] == symbol:
+            # Prüfen ob genug Aktien zum Verkaufen vorhanden sind
             if item["qty"] >= qty:
-                item["qty"] -= qty
+                item["qty"] -= qty  # Menge reduzieren
+                
+                # Wenn alle Aktien verkauft: Position entfernen
                 if item["qty"] == 0:
                     portfolio.remove(item)
                 break
     
+    # Portfolio speichern
     save_portfolio(portfolio)
     
+    # Transaktion in Historie speichern
     save_transaction({
         "timestamp": datetime.now().isoformat(),
-        "type": "sell",
+        "type": "sell",  # Verkauf
         "symbol": symbol,
         "qty": qty,
         "price": ticker.get("price", 0)
     })
     
-    # Kontostand anpassen: Erlös hinzufügen
+    # ===== Kontostand aktualisieren =====
+    # Verkaufserlös zum Kontostand addieren
     try:
         current_balance = load_balance()
-        proceeds = qty * float(ticker.get("price", 0))
+        proceeds = qty * float(ticker.get("price", 0))  # Erlös = Menge * Preis
         current_balance += proceeds
         save_balance(current_balance)
     except Exception:
@@ -1989,20 +2867,56 @@ def confirm_sell(n, ticker, qty, portfolio):
     return portfolio
 
 # Transactions Modal
+# ================================================================================
+# TRANSAKTIONS-HISTORIE CALLBACK
+# ================================================================================
+# Dieser Callback verwaltet das Transaktions-Modal, das alle vergangenen
+# Käufe und Verkäufe anzeigt.
+#
+# Funktionen:
+# - Öffnen/Schließen des Modals
+# - Filtern nach Jahr, Monat und Transaktionstyp (Kauf/Verkauf)
+# - Anzeige einer interaktiven Tabelle mit Sortier- und Filterfunktionen
+# - Berechnung von Zusammenfassungs-Statistiken (Summe Käufe, Verkäufe, Saldo)
+#
+# Die Tabelle verwendet dash_table.DataTable für erweiterte Funktionen:
+# - Pagination (seitenweise Anzeige)
+# - Native Sortierung und Filterung
+# - Bedingte Formatierung (grün für Käufe, rot für Verkäufe)
+# ================================================================================
 @callback(
-    Output("transactions-modal", "is_open"),
-    Output("transactions-table", "children"),
-    Output("transactions-summary", "children"),
-    Output("tx-year", "options"),
-    Input("btn-transactions", "n_clicks"),
-    Input("btn-close-tx", "n_clicks"),
-    Input("tx-year", "value"),
-    Input("tx-month", "value"),
-    Input("tx-type", "value"),
-    State("transactions-modal", "is_open"),
+    # --- Outputs: Was der Callback aktualisiert ---
+    Output("transactions-modal", "is_open"),         # Modal öffnen/schließen
+    Output("transactions-table", "children"),        # Tabellen-Inhalt
+    Output("transactions-summary", "children"),      # Zusammenfassungs-Karten
+    Output("tx-year", "options"),                    # Jahr-Dropdown-Optionen
+    
+    # --- Inputs: Was den Callback auslöst ---
+    Input("btn-transactions", "n_clicks"),           # "Transaktionen"-Button
+    Input("btn-close-tx", "n_clicks"),               # Schließen-Button
+    Input("tx-year", "value"),                       # Jahr-Filter
+    Input("tx-month", "value"),                      # Monat-Filter
+    Input("tx-type", "value"),                       # Typ-Filter (Kauf/Verkauf)
+    
+    # --- State: Zusätzliche Daten ohne Trigger ---
+    State("transactions-modal", "is_open"),          # Aktueller Modal-Status
     prevent_initial_call=True
 )
 def toggle_transactions(n1, n2, year, month, tx_type, is_open):
+    """
+    Verwaltet das Transaktions-Historie-Modal.
+    
+    Args:
+        n1: Klick-Zähler für "Transaktionen"-Button
+        n2: Klick-Zähler für Schließen-Button
+        year: Ausgewähltes Jahr zum Filtern (oder "all")
+        month: Ausgewählter Monat zum Filtern (oder "all")
+        tx_type: Transaktionstyp zum Filtern ("buy", "sell" oder "all")
+        is_open: Aktueller Modal-Zustand
+    
+    Returns:
+        Tuple: (Modal-Status, Tabellen-Inhalt, Zusammenfassung, Jahr-Optionen)
+    """
     triggered = ctx.triggered_id
     
     if triggered in ["btn-transactions", "btn-close-tx"]:
@@ -2107,24 +3021,56 @@ def toggle_transactions(n1, n2, year, month, tx_type, is_open):
     
     return is_open, table, summary, year_options
 
-# Ticker Detail Modal (Klick auf Market Overview)
+# ================================================================================
+# TICKER DETAIL MODAL - Market Overview Detailansicht
+# ================================================================================
+# Wenn der Benutzer auf einen Ticker in der Market-Overview-Leiste klickt,
+# öffnet sich dieses Modal mit detaillierten Informationen.
+#
+# Features:
+# - Zeigt Detailchart für den ausgewählten Index/ETF
+# - Zeitraum-Buttons für verschiedene Ansichten (1 Tag, 1 Woche, 1 Monat, 3 Monate)
+# - Aktuelle Statistiken (Kurs, Hoch, Tief, Volumen)
+#
+# Dynamische Inputs:
+# - Die Inputs werden dynamisch für alle MARKET_OVERVIEW_SYMBOLS generiert
+# - Das ermöglicht Klick-Handler für jeden einzelnen Ticker
+# - List Comprehension erstellt für jedes Symbol einen eigenen Input
+#
+# *args Pattern:
+# - Weil die Anzahl der Inputs variabel ist, werden alle als *args übergeben
+# - Der Code muss dann die einzelnen Argumente extrahieren
+# ================================================================================
 @callback(
-    Output("ticker-modal", "is_open"),
-    Output("ticker-modal-header", "children"),
-    Output("ticker-modal-stats", "children"),
-    Output("ticker-modal-chart", "figure"),
-    Output("current-ticker-symbol", "data"),
+    # --- Outputs ---
+    Output("ticker-modal", "is_open"),               # Modal öffnen/schließen
+    Output("ticker-modal-header", "children"),       # Titel im Modal-Header
+    Output("ticker-modal-stats", "children"),        # Statistik-Anzeige
+    Output("ticker-modal-chart", "figure"),          # Chart-Figur
+    Output("current-ticker-symbol", "data"),         # Speichert aktuelles Symbol
+    
+    # --- Dynamische Inputs für alle Ticker + Kontroll-Buttons ---
+    # Für jedes Symbol in MARKET_OVERVIEW_SYMBOLS wird ein Input erstellt
     [Input(f"ticker-{s['name']}", "n_clicks") for s in MARKET_OVERVIEW_SYMBOLS] +
+    # Plus die Kontroll-Buttons für Schließen und Zeitraum-Wechsel
     [Input("btn-close-ticker", "n_clicks"),
-     Input("ticker-btn-1d", "n_clicks"),
-     Input("ticker-btn-1w", "n_clicks"),
-     Input("ticker-btn-1m", "n_clicks"),
-     Input("ticker-btn-3m", "n_clicks")],
+     Input("ticker-btn-1d", "n_clicks"),             # 1-Tages-Ansicht
+     Input("ticker-btn-1w", "n_clicks"),             # 1-Wochen-Ansicht
+     Input("ticker-btn-1m", "n_clicks"),             # 1-Monats-Ansicht
+     Input("ticker-btn-3m", "n_clicks")],            # 3-Monats-Ansicht
+    
+    # --- States ---
     State("ticker-modal", "is_open"),
-    State("current-ticker-symbol", "data"),
+    State("current-ticker-symbol", "data"),          # Gespeichertes Symbol für Zeitraum-Wechsel
     prevent_initial_call=True
 )
 def toggle_ticker_modal(*args):
+    """
+    Verwaltet das Ticker-Detail-Modal.
+    
+    Verwendet *args weil die Anzahl der Inputs dynamisch ist
+    (abhängig von der Anzahl der Symbole in MARKET_OVERVIEW_SYMBOLS).
+    """
     # Parse arguments
     num_tickers = len(MARKET_OVERVIEW_SYMBOLS)
     ticker_clicks = args[:num_tickers]
@@ -2196,14 +3142,31 @@ def toggle_ticker_modal(*args):
     
     return is_open, "", "", go.Figure(), current_symbol
 
-# Sentiment Stock Search
+# ================================================================================
+# SENTIMENT ANALYSE - Aktiensuche
+# ================================================================================
+# Dieser Callback ermöglicht die Aktiensuche für die Sentiment-Analyse.
+# Der Benutzer tippt einen Suchbegriff ein, und das Dropdown wird
+# mit passenden Aktien gefüllt.
+#
+# Verwendet die globale search_stocks() Funktion, die Yahoo Finance abfragt.
+# ================================================================================
 @callback(
-    Output("sentiment-stock-dropdown", "options"),
-    Output("sentiment-stock-dropdown", "value"),
-    Input("sentiment-search-input", "value"),
+    Output("sentiment-stock-dropdown", "options"),   # Dropdown-Optionen
+    Output("sentiment-stock-dropdown", "value"),     # Vorausgewählter Wert
+    Input("sentiment-search-input", "value"),        # Suchbegriff vom Benutzer
     prevent_initial_call=True
 )
 def sentiment_search_stocks(search_query):
+    """
+    Sucht Aktien für die Sentiment-Analyse basierend auf der Benutzereingabe.
+    
+    Args:
+        search_query: Der Suchbegriff (Aktienname oder Symbol)
+    
+    Returns:
+        Tuple: (Dropdown-Optionen, vorausgewählter Wert)
+    """
     if not search_query or len(search_query) < 2:
         return [], None
     
@@ -2221,16 +3184,45 @@ def sentiment_search_stocks(search_query):
     
     return options, default_value
 
-# Sentiment Analysis
+# ================================================================================
+# SENTIMENT ANALYSE - Hauptanalyse-Callback
+# ================================================================================
+# Dieser Callback führt die eigentliche Sentiment-Analyse durch.
+# Er analysiert News-Artikel zu einer Aktie und bewertet deren Stimmung.
+#
+# Technische Details:
+# - Verwendet VADER (Valence Aware Dictionary and sEntiment Reasoner)
+# - VADER ist ein regelbasierter Sentiment-Analysator für Social Media
+# - Scores reichen von -1 (sehr negativ) bis +1 (sehr positiv)
+#
+# Die Analyse zeigt:
+# - Durchschnittlicher Sentiment-Score
+# - Anzahl analysierter News
+# - Kursänderung im Zeitraum
+# - Chart mit Sentiment über Zeit
+# - Top News sortiert nach Sentiment-Stärke
+# ================================================================================
 @callback(
-    Output("ai-sentiment-output", "children"),
-    Input("btn-sentiment-analyze", "n_clicks"),
-    State("sentiment-stock-dropdown", "value"),
-    State("sentiment-period-select", "value"),
-    State("sentiment-news-count", "value"),
+    Output("ai-sentiment-output", "children"),       # Ergebnis-Container
+    Input("btn-sentiment-analyze", "n_clicks"),      # "Analysieren"-Button
+    State("sentiment-stock-dropdown", "value"),      # Ausgewählte Aktie
+    State("sentiment-period-select", "value"),       # Zeitraum (1 Monat, 3 Monate, etc.)
+    State("sentiment-news-count", "value"),          # Anzahl News zu analysieren
     prevent_initial_call=True
 )
 def sentiment_analyze_callback(n_clicks, symbol, period, news_count):
+    """
+    Führt eine Sentiment-Analyse für die ausgewählte Aktie durch.
+    
+    Args:
+        n_clicks: Button-Klick-Zähler (zum Triggern)
+        symbol: Das Aktien-Symbol (z.B. "AAPL")
+        period: Analysezeitraum (z.B. "1mo", "3mo")
+        news_count: Maximale Anzahl zu analysierender News
+    
+    Returns:
+        html.Div: Formatierte Ergebnisanzeige mit Chart und Statistiken
+    """
     if not symbol:
         return dbc.Alert("Bitte wählen Sie eine Aktie aus der Dropdown-Liste aus.", color="warning")
     
@@ -2329,14 +3321,22 @@ def sentiment_analyze_callback(n_clicks, symbol, period, news_count):
         html.Ul(news_list, style={"listStyleType": "none", "paddingLeft": "0"})
     ])
 
-# Correlation Stock Search
+# ================================================================================
+# KORRELATIONS-ANALYSE - Aktiensuche
+# ================================================================================
+# Aktiensuche für die Korrelationsanalyse.
+# Funktioniert identisch zur Sentiment-Suche.
+# ================================================================================
 @callback(
-    Output("corr-stock-dropdown", "options"),
-    Output("corr-stock-dropdown", "value"),
-    Input("corr-search-input", "value"),
+    Output("corr-stock-dropdown", "options"),        # Dropdown-Optionen
+    Output("corr-stock-dropdown", "value"),          # Vorausgewählter Wert
+    Input("corr-search-input", "value"),             # Suchbegriff
     prevent_initial_call=True
 )
 def corr_search_stocks(search_query):
+    """
+    Sucht Aktien für die Korrelationsanalyse.
+    """
     if not search_query or len(search_query) < 2:
         return [], None
     
@@ -2353,16 +3353,45 @@ def corr_search_stocks(search_query):
     
     return options, default_value
 
-# Correlation Analysis
+# ================================================================================
+# KORRELATIONS-ANALYSE - Hauptanalyse-Callback
+# ================================================================================
+# Dieser Callback berechnet die Korrelation zwischen News-Sentiment
+# und Kursbewegung einer Aktie.
+#
+# Was ist Korrelation?
+# - Ein statistisches Maß, das zeigt, wie stark zwei Variablen zusammenhängen
+# - Werte von -1 bis +1:
+#   * +1 = Perfekte positive Korrelation (wenn A steigt, steigt B)
+#   * 0 = Keine lineare Beziehung
+#   * -1 = Perfekte negative Korrelation (wenn A steigt, fällt B)
+#
+# Die Analyse zeigt:
+# - Korrelationskoeffizient zwischen Sentiment und Kurs
+# - Visualisierung der Beziehung im Chart
+# - Interpretation der Ergebnisse
+# ================================================================================
 @callback(
-    Output("corr-output", "children"),
-    Input("btn-corr-analyze", "n_clicks"),
-    State("corr-stock-dropdown", "value"),
-    State("corr-period-select", "value"),
-    State("corr-news-count", "value"),
+    Output("corr-output", "children"),               # Ergebnis-Container
+    Input("btn-corr-analyze", "n_clicks"),           # "Analysieren"-Button
+    State("corr-stock-dropdown", "value"),           # Ausgewählte Aktie
+    State("corr-period-select", "value"),            # Zeitraum
+    State("corr-news-count", "value"),               # Anzahl News
     prevent_initial_call=True
 )
 def correlation_analyze_callback(n_clicks, symbol, period, news_count):
+    """
+    Berechnet die Korrelation zwischen News-Sentiment und Kursbewegung.
+    
+    Args:
+        n_clicks: Button-Klick-Zähler
+        symbol: Das Aktien-Symbol
+        period: Analysezeitraum
+        news_count: Maximale Anzahl News
+    
+    Returns:
+        html.Div: Formatierte Ergebnisanzeige mit Korrelations-Chart
+    """
     if not symbol:
         return dbc.Alert("Bitte wählen Sie eine Aktie aus der Dropdown-Liste aus.", color="warning")
     
@@ -2435,15 +3464,40 @@ def correlation_analyze_callback(n_clicks, symbol, period, news_count):
     ])
 
 
-# ============== Forecast Callbacks ==============
-# Stock search for forecast
+# ================================================================================
+# PROGNOSE (FORECAST) CALLBACKS - ARIMA Zeitreihenanalyse
+# ================================================================================
+# Diese Callbacks implementieren die Kursprognose mittels ARIMA-Modell.
+#
+# Was ist ARIMA?
+# ARIMA steht für: AutoRegressive Integrated Moving Average
+# - AutoRegressive (AR): Nutzt vergangene Werte zur Vorhersage
+# - Integrated (I): Macht die Daten stationär durch Differenzierung
+# - Moving Average (MA): Nutzt vergangene Prognosefehler
+#
+# ARIMA-Parameter (p, d, q):
+# - p: Anzahl der AR-Terme (Vergangenheitswerte)
+# - d: Grad der Differenzierung (meist 1)
+# - q: Anzahl der MA-Terme (Fehlerwerte)
+#
+# Wichtig: ARIMA ist ein statistisches Modell und keine Kristallkugel!
+# Die Prognosen sind nur Schätzungen basierend auf historischen Mustern.
+# ================================================================================
+
+# --- Aktiensuche für Prognose ---
 @callback(
-    Output("forecast-stock-dropdown", "options"),
-    Output("forecast-stock-dropdown", "value"),
-    Input("forecast-search-input", "value"),
+    Output("forecast-stock-dropdown", "options"),    # Dropdown-Optionen
+    Output("forecast-stock-dropdown", "value"),      # Vorausgewählter Wert
+    Input("forecast-search-input", "value"),         # Suchbegriff
     prevent_initial_call=True
 )
 def forecast_search_callback(search_term):
+    """
+    Sucht Aktien für die Prognose-Funktion.
+    
+    Verwendet Yahoo Finance API direkt statt der globalen search_stocks(),
+    um die Implementierung zu demonstrieren.
+    """
     if not search_term or len(search_term) < 2:
         return [], None
     
@@ -2469,16 +3523,34 @@ def forecast_search_callback(search_term):
     return options, default_value
 
 
-# Forecast Analysis
+# --- ARIMA-Prognose Hauptanalyse ---
+# Dieser Callback führt die eigentliche ARIMA-Prognose durch
 @callback(
-    Output("ai-forecast-output", "children"),
-    Input("btn-forecast-analyze", "n_clicks"),
-    State("forecast-stock-dropdown", "value"),
-    State("forecast-history-select", "value"),
-    State("forecast-days-select", "value"),
+    Output("ai-forecast-output", "children"),        # Ergebnis-Container
+    Input("btn-forecast-analyze", "n_clicks"),       # "Analysieren"-Button
+    State("forecast-stock-dropdown", "value"),       # Ausgewählte Aktie
+    State("forecast-history-select", "value"),       # Historische Daten (z.B. "1y" für 1 Jahr)
+    State("forecast-days-select", "value"),          # Prognose-Horizont in Tagen
     prevent_initial_call=True
 )
 def forecast_analyze_callback(n_clicks, symbol, history_period, forecast_days):
+    """
+    Führt eine ARIMA-basierte Kursprognose durch.
+    
+    Args:
+        n_clicks: Button-Klick-Zähler
+        symbol: Das Aktien-Symbol
+        history_period: Zeitraum der historischen Daten für Training
+        forecast_days: Anzahl Tage für die Prognose
+    
+    Returns:
+        html.Div: Prognose-Ergebnisse mit Chart und Konfidenzintervall
+    
+    Die Ergebnisse zeigen:
+    - Aktueller Kurs vs. prognostizierter Kurs
+    - 95% Konfidenzintervall (Unsicherheitsbereich)
+    - ARIMA-Parameter und Modell-Güte (AIC-Score)
+    """
     if not symbol:
         return dbc.Alert("Bitte wählen Sie eine Aktie aus der Dropdown-Liste aus.", color="warning")
     
@@ -2565,15 +3637,42 @@ def forecast_analyze_callback(n_clicks, symbol, history_period, forecast_days):
     ])
 
 
-# ============== Monte-Carlo Callbacks ==============
-# Stock search for Monte-Carlo
+# ================================================================================
+# MONTE-CARLO SIMULATION CALLBACKS
+# ================================================================================
+# Monte-Carlo-Simulationen verwenden Zufallszahlen, um mögliche
+# zukünftige Kursverläufe zu simulieren.
+#
+# Was ist Monte-Carlo?
+# - Benannt nach dem Casino in Monaco
+# - Verwendet Zufallszahlen um komplexe Systeme zu simulieren
+# - Hier: Tausende mögliche Kursverläufe werden simuliert
+#
+# Geometric Brownian Motion (GBM):
+# - Mathematisches Modell für Aktienkurse
+# - Berücksichtigt: Drift (Trend) + Volatilität (Zufälligkeit)
+# - Formel: dS = μ*S*dt + σ*S*dW
+#   * μ (mu): Jährliche Drift/Rendite
+#   * σ (sigma): Jährliche Volatilität
+#   * dW: Zufallskomponente (Wiener-Prozess)
+#
+# Ergebnisse:
+# - Wahrscheinlichkeitsverteilung möglicher Endpreise
+# - Perzentile (5%, 25%, 50%, 75%, 95%)
+# - Wahrscheinlichkeit für Gewinn/Verlust
+# ================================================================================
+
+# --- Aktiensuche für Monte-Carlo ---
 @callback(
-    Output("mc-stock-dropdown", "options"),
-    Output("mc-stock-dropdown", "value"),
-    Input("mc-search-input", "value"),
+    Output("mc-stock-dropdown", "options"),          # Dropdown-Optionen
+    Output("mc-stock-dropdown", "value"),            # Vorausgewählter Wert
+    Input("mc-search-input", "value"),               # Suchbegriff
     prevent_initial_call=True
 )
 def mc_search_callback(search_term):
+    """
+    Sucht Aktien für die Monte-Carlo-Simulation.
+    """
     if not search_term or len(search_term) < 2:
         return [], None
     
@@ -2599,17 +3698,35 @@ def mc_search_callback(search_term):
     return options, default_value
 
 
-# Monte-Carlo Analysis
+# --- Monte-Carlo Hauptanalyse ---
+# Dieser Callback führt die Monte-Carlo-Simulation durch
 @callback(
-    Output("mc-output", "children"),
-    Input("btn-mc-analyze", "n_clicks"),
-    State("mc-stock-dropdown", "value"),
-    State("mc-history-select", "value"),
-    State("mc-days-select", "value"),
-    State("mc-simulations-select", "value"),
+    Output("mc-output", "children"),                 # Ergebnis-Container
+    Input("btn-mc-analyze", "n_clicks"),             # "Analysieren"-Button
+    State("mc-stock-dropdown", "value"),             # Ausgewählte Aktie
+    State("mc-history-select", "value"),             # Historische Daten für Volatilität
+    State("mc-days-select", "value"),                # Prognose-Horizont
+    State("mc-simulations-select", "value"),         # Anzahl Simulationen
     prevent_initial_call=True
 )
 def monte_carlo_analyze_callback(n_clicks, symbol, history_period, forecast_days, num_simulations):
+    """
+    Führt eine Monte-Carlo-Simulation für die Kursprognose durch.
+    
+    Args:
+        n_clicks: Button-Klick-Zähler
+        symbol: Das Aktien-Symbol
+        history_period: Zeitraum für historische Volatilitätsberechnung
+        forecast_days: Anzahl Tage für die Simulation
+        num_simulations: Anzahl der Simulationspfade (mehr = genauer, aber langsamer)
+    
+    Returns:
+        html.Div: Simulationsergebnisse mit:
+        - Median-Prognose und Wahrscheinlichkeitsverteilung
+        - Perzentile der möglichen Endpreise
+        - Gewinn-/Verlust-Wahrscheinlichkeiten
+        - Fächer-Chart mit allen Simulationspfaden
+    """
     if not symbol:
         return dbc.Alert("Bitte wählen Sie eine Aktie aus der Dropdown-Liste aus.", color="warning")
     
@@ -2745,36 +3862,84 @@ def monte_carlo_analyze_callback(n_clicks, symbol, history_period, forecast_days
     ])
 
 
-# ============== Theme Toggle Callback ==============
+# ================================================================================
+# THEME TOGGLE - Clientside Callback für Dark/Light Mode
+# ================================================================================
+# Dieser Callback ist ein CLIENTSIDE Callback - er läuft direkt im Browser!
+#
+# Was ist ein Clientside Callback?
+# - Normaler Callback: Browser -> Server -> Browser (langsam)
+# - Clientside Callback: Läuft komplett im Browser (schnell)
+# - Ideal für einfache UI-Änderungen wie Theme-Wechsel
+#
+# Der JavaScript-Code:
+# 1. Prüft welcher Button geklickt wurde (triggered_id)
+# 2. Fügt/entfernt die CSS-Klasse 'light-mode' am body
+# 3. Speichert das aktuelle Theme im dcc.Store
+#
+# dash_clientside.callback_context: Entspricht ctx im Server-Callback
+# dash_clientside.no_update: Verhindert unnötige Updates
+# ================================================================================
 app.clientside_callback(
+    # JavaScript-Code als String
+    # Dieser Code läuft direkt im Browser des Benutzers
     """
     function(n_light, n_dark) {
+        // dash_clientside.callback_context enthält Infos darüber,
+        // welches Element den Callback ausgelöst hat
         const triggered = dash_clientside.callback_context.triggered[0];
         if (!triggered) return window.dash_clientside.no_update;
         
+        // Extrahiere die ID des auslösenden Elements
         const triggeredId = triggered.prop_id.split('.')[0];
         
+        // Je nach Button: Theme-Klasse hinzufügen oder entfernen
         if (triggeredId === 'btn-light-mode') {
             document.body.classList.add('light-mode');
-            return 'light';
+            return 'light';  // Speichere im Store
         } else if (triggeredId === 'btn-dark-mode') {
             document.body.classList.remove('light-mode');
-            return 'dark';
+            return 'dark';   // Speichere im Store
         }
         return window.dash_clientside.no_update;
     }
     """,
+    # Output: Speichert das aktuelle Theme
     Output("theme-store", "data"),
+    # Inputs: Die Theme-Toggle-Buttons
     Input("btn-light-mode", "n_clicks"),
     Input("btn-dark-mode", "n_clicks"),
     prevent_initial_call=True
 )
 
 
-# ============== Server starten ==============
+# ================================================================================
+# SERVER STARTEN - Hier startet die Anwendung
+# ================================================================================
+# Der folgende Code wird nur ausgeführt, wenn dieses Skript direkt gestartet wird
+# (nicht wenn es von einem anderen Skript importiert wird).
+#
+# __name__ == "__main__" ist ein Python-Idiom:
+# - Wenn du das Skript direkt aufrufst: __name__ ist "__main__"
+# - Wenn du es importierst: __name__ ist der Modulname
+#
+# app.run() startet den Dash-Entwicklungsserver:
+# - debug=True: Zeigt detaillierte Fehlermeldungen und lädt bei Codeänderungen neu
+# - port=8050: Die Anwendung ist unter http://localhost:8050 erreichbar
+#
+# Für Produktionseinsatz sollte ein richtiger WSGI-Server wie Gunicorn verwendet werden!
+# ================================================================================
+
 if __name__ == "__main__":
+    # Begrüßungsnachricht in der Konsole
     print("=" * 50)
     print("🚀 Stock Dashboard startet...")
     print("📊 Öffne im Browser: http://localhost:8050")
     print("=" * 50)
+    
+    # Server starten
+    # debug=True ermöglicht:
+    # - Automatisches Neuladen bei Codeänderungen
+    # - Detaillierte Fehlermeldungen im Browser
+    # - Hot Reloading
     app.run(debug=True, port=8050)
