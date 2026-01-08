@@ -1,68 +1,30 @@
 [
   {
-    "timestamp": "2025-12-11T12:19:16.274758",
-    "type": "buy",
-    "symbol": "AAPL",
-    "qty": 4,
-    "price": 278.7799987792969
-  },
-  {
-    "timestamp": "2025-12-11T12:19:45.268907",
-    "type": "buy",
-    "symbol": "TSLA",
-    "qty": 6,
-    "price": 451.45001220703125
-  },
-  {
-    "timestamp": "2025-12-11T12:20:11.910275",
-    "type": "buy",
-    "symbol": "MSFT",
-    "qty": 6,
-    "price": 478.55999755859375
-  },
-  {
-    "timestamp": "2025-12-18T19:12:11.295203",
+    "timestamp": "2026-01-08T22:13:37.775763",
     "type": "buy",
     "symbol": "BTC-USD",
     "qty": 1,
-    "price": 86455.3046875
+    "price": 90982.46875
   },
   {
-    "timestamp": "2025-12-18T20:04:45.718889",
-    "type": "buy",
-    "symbol": "MSFT",
-    "qty": 5,
-    "price": 485.5400085449219
-  },
-  {
-    "timestamp": "2025-12-18T20:23:06.608107",
-    "type": "sell",
-    "symbol": "AAPL",
-    "qty": 4,
-    "price": 271.45928955078125
-<<<<<<< HEAD
-  },
-  {
-    "timestamp": "2026-01-04T18:27:47.109430",
+    "timestamp": "2026-01-08T22:14:04.733220",
     "type": "buy",
     "symbol": "AMD",
     "qty": 10,
-    "price": 223.47000122070312
+    "price": 204.67999267578125
   },
   {
-    "timestamp": "2026-01-04T18:28:18.854920",
-    "type": "sell",
+    "timestamp": "2026-01-08T22:14:25.971740",
+    "type": "buy",
     "symbol": "NVDA",
     "qty": 10,
-    "price": 188.85000610351562
+    "price": 185
   },
   {
-    "timestamp": "2026-01-04T18:29:16.935355",
-    "type": "sell",
-    "symbol": "NVDA",
+    "timestamp": "2026-01-08T22:14:52.057114",
+    "type": "buy",
+    "symbol": "MSFT",
     "qty": 10,
-    "price": 188.85000610351562
-=======
->>>>>>> f9f45932bd55e9604b45eafebe98d7247575c2fd
+    "price": 478.1099853515625
   }
 ]

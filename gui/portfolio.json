@@ -1,26 +1,26 @@
 [
   {
-    "symbol": "TSLA",
-    "qty": 6,
-    "buy_price": 451.45001220703125,
-    "avg_price": 451.45001220703125
-  },
-  {
-    "symbol": "MSFT",
-    "qty": 11,
-    "buy_price": 481.73272982510656,
-    "avg_price": 481.73272982510656
-  },
-  {
     "symbol": "BTC-USD",
     "qty": 1,
-    "buy_price": 86455.3046875,
-    "avg_price": 86455.3046875
+    "buy_price": 90982.46875,
+    "avg_price": 90982.46875
   },
   {
     "symbol": "AMD",
     "qty": 10,
-    "buy_price": 223.47000122070312,
-    "avg_price": 223.47000122070312
+    "buy_price": 204.67999267578125,
+    "avg_price": 204.67999267578125
+  },
+  {
+    "symbol": "NVDA",
+    "qty": 10,
+    "buy_price": 185,
+    "avg_price": 185
+  },
+  {
+    "symbol": "MSFT",
+    "qty": 10,
+    "buy_price": 478.1099853515625,
+    "avg_price": 478.1099853515625
   }
 ]
