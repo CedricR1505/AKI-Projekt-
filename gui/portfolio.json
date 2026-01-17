@@ -22,5 +22,11 @@
     "qty": 10,
     "buy_price": 478.1099853515625,
     "avg_price": 478.1099853515625
+  },
+  {
+    "symbol": "RHM.DE",
+    "qty": 100,
+    "buy_price": 1900,
+    "avg_price": 1900
   }
 ]
