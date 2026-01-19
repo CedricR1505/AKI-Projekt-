@@ -132,8 +132,8 @@ MARKET_OVERVIEW_SYMBOLS = [
     # Kryptowährung
     {"name": "BTC", "symbol": "BTC-USD", "decimals": 0},     # Bitcoin in US-Dollar
     
-    # Währungspaar (mit invert=True wird aus USD/EUR -> EUR/USD)
-    {"name": "EUR/USD", "symbol": "EURUSD=X", "decimals": 4, "invert": True},  # Euro zu US-Dollar Kurs
+    # Währungspaar (1 Euro = X US-Dollar)
+    {"name": "EUR/USD", "symbol": "EURUSD=X", "decimals": 4},  # Euro zu US-Dollar Kurs
 ]
 
 # ================================================================================
@@ -1794,6 +1794,12 @@ def update_market_tickers(n):
 @callback(
     Output("stock-chart", "figure"),   # Aktualisiert das Diagramm
     Output("stock-news", "children"),   # Aktualisiert die News-Liste
+    Output("btn-1d", "active"),         # Aktiv-Status 1-Tag Button
+    Output("btn-1w", "active"),         # Aktiv-Status 1-Woche Button
+    Output("btn-1m", "active"),         # Aktiv-Status 1-Monat Button
+    Output("btn-3m", "active"),         # Aktiv-Status 3-Monate Button
+    Output("btn-1y", "active"),         # Aktiv-Status 1-Jahr Button
+    Output("btn-max", "active"),        # Aktiv-Status Maximum Button
     Input("stock-search", "value"),     # Suchfeld-Eingabe
     Input("btn-1d", "n_clicks"),        # 1-Tag Button
     Input("btn-1w", "n_clicks"),        # 1-Woche Button
@@ -1813,7 +1819,7 @@ def update_stock_view(search, n1d, n1w, n1m, n3m, n1y, nmax):
     - n1d bis nmax: Klick-Zähler der Zeitraum-Buttons (Werte werden nicht direkt
                     verwendet, aber der Klick löst den Callback aus)
     
-    Rückgabe: (chart_figure, news_elements)
+    Rückgabe: (chart_figure, news_elements, btn_1d_active, btn_1w_active, btn_1m_active, btn_3m_active, btn_1y_active, btn_max_active)
     """
     # Finde heraus, welches Element den Callback ausgelöst hat
     triggered = ctx.triggered_id
@@ -1829,18 +1835,23 @@ def update_stock_view(search, n1d, n1w, n1m, n3m, n1y, nmax):
         "btn-max": ("max", "1mo"),   # Maximum, monatlich
     }
     
+    # Bestimme welcher Button aktiv sein soll
+    # Standard ist 1-Monat wenn kein Button geklickt wurde (z.B. bei Suche)
+    active_btn = triggered if triggered in period_map else "btn-1m"
+    btn_states = [active_btn == btn for btn in ["btn-1d", "btn-1w", "btn-1m", "btn-3m", "btn-1y", "btn-max"]]
+    
     # Hole Periode und Interval basierend auf geklicktem Button
     # Falls keiner geklickt: Standard ist 1 Monat
     period, interval = period_map.get(triggered, ("1mo", "1d"))
     
     # Prüfe ob Suchbegriff lang genug ist
     if not search or len(search) < 2:
-        return go.Figure(), html.P("Bitte Aktie suchen...")
+        return go.Figure(), html.P("Bitte Aktie suchen..."), *btn_states
     
     # Suche nach passenden Aktien
     results = search_stocks(search)
     if not results:
-        return go.Figure(), html.P("Keine Ergebnisse")
+        return go.Figure(), html.P("Keine Ergebnisse"), *btn_states
     
     # Nimm das erste Suchergebnis
     symbol = results[0]["symbol"]
@@ -1863,7 +1874,7 @@ def update_stock_view(search, n1d, n1w, n1m, n3m, n1y, nmax):
         ], className="mb-2") for n in news
     ] if news else [html.P("Keine News gefunden")]
     
-    return fig, news_items
+    return fig, news_items, *btn_states
 
 # ================================================================================
 # CALLBACK: PORTFOLIO ANZEIGE AKTUALISIEREN
@@ -2698,16 +2709,23 @@ def confirm_sell(n, ticker, qty, portfolio):
     portfolio = portfolio or []
     
     # ===== Position im Portfolio finden und aktualisieren =====
+    sold = False  # Flag um zu prüfen ob Verkauf erfolgreich war
     for item in portfolio:
         if item["symbol"] == symbol:
             # Prüfen ob genug Aktien zum Verkaufen vorhanden sind
             if item["qty"] >= qty:
                 item["qty"] -= qty  # Menge reduzieren
+                sold = True  # Verkauf war erfolgreich
                 
                 # Wenn alle Aktien verkauft: Position entfernen
                 if item["qty"] == 0:
                     portfolio.remove(item)
                 break
+    
+    # Nur wenn Verkauf erfolgreich war: Portfolio, Transaktion und Kontostand aktualisieren
+    if not sold:
+        # Aktie nicht im Portfolio oder nicht genug Stücke vorhanden
+        return portfolio
     
     # Portfolio speichern
     save_portfolio(portfolio)
@@ -2915,6 +2933,10 @@ def toggle_transactions(n1, n2, year, month, tx_type, is_open):
     Output("ticker-modal-stats", "children"),        # Statistik-Anzeige
     Output("ticker-modal-chart", "figure"),          # Chart-Figur
     Output("current-ticker-symbol", "data"),         # Speichert aktuelles Symbol
+    Output("ticker-btn-1d", "active"),               # Aktiv-Status 1-Tag Button
+    Output("ticker-btn-1w", "active"),               # Aktiv-Status 1-Woche Button
+    Output("ticker-btn-1m", "active"),               # Aktiv-Status 1-Monat Button
+    Output("ticker-btn-3m", "active"),               # Aktiv-Status 3-Monate Button
     
     # --- Dynamische Inputs für alle Ticker + Kontroll-Buttons ---
     # Für jedes Symbol in MARKET_OVERVIEW_SYMBOLS wird ein Input erstellt
@@ -2949,7 +2971,7 @@ def toggle_ticker_modal(*args):
     triggered = ctx.triggered_id
     
     if triggered == "btn-close-ticker":
-        return False, "", "", go.Figure(), None
+        return False, "", "", go.Figure(), None, True, False, False, False
     
     # Zeitraum-Buttons
     period_map = {
@@ -2959,10 +2981,14 @@ def toggle_ticker_modal(*args):
         "ticker-btn-3m": ("3mo", "1d"),
     }
     
+    # Bestimme welcher Button aktiv sein soll
+    btn_ids = ["ticker-btn-1d", "ticker-btn-1w", "ticker-btn-1m", "ticker-btn-3m"]
+    
     if triggered in period_map and current_symbol:
         period, interval = period_map[triggered]
         fig = create_stock_chart(current_symbol["symbol"], period, interval)
-        return True, current_symbol["header"], current_symbol["stats"], fig, current_symbol
+        btn_states = [triggered == btn for btn in btn_ids]
+        return True, current_symbol["header"], current_symbol["stats"], fig, current_symbol, *btn_states
     
     # Finde geklickten Ticker
     for i, s in enumerate(MARKET_OVERVIEW_SYMBOLS):
@@ -3005,9 +3031,10 @@ def toggle_ticker_modal(*args):
             # Speichere Symbol-Info für Zeitraum-Wechsel
             symbol_data = {"symbol": symbol, "name": name, "header": header, "stats": stats}
             
-            return True, header, stats, fig, symbol_data
+            # 1T ist standardmäßig aktiv wenn Modal geöffnet wird
+            return True, header, stats, fig, symbol_data, True, False, False, False
     
-    return is_open, "", "", go.Figure(), current_symbol
+    return is_open, "", "", go.Figure(), current_symbol, True, False, False, False
 
 # ================================================================================
 # SENTIMENT ANALYSE - Aktiensuche
