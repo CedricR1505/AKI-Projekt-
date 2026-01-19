@@ -273,7 +273,7 @@ Entwickelt als **AKI-Projekt** (Anwendung von künstlicher Intelligenz in der Fi
 
 ## 📄 Lizenz
 
-MIT License - Siehe LICENSE Datei für Details
+MIT License 
 
 ---
 
