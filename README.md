@@ -60,7 +60,7 @@ Eine vollständige Python-basierte Web-Anwendung zur **Echtzeit-Aktienanalyse**,
 
 ### Schritt 1: Repository klonen
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/CedricR1505/AKI-Projekt-.git
 cd AKI-Projekt-
 ```
 
